@@ -1833,17 +1833,17 @@ mod tests {
         );
         assert_eq!(&records[0][10], "facility: 4 ¦ severity: -");
         assert_eq!(&records[0][13], "test_files/linux/auth.log");
-        // The second row: no timestamp (the `-` placeholder, CSV-sanitized like Suzaku), a formula
-        // in the message gets the apostrophe, no rule id.
-        assert_eq!(&records[1][0], "'-");
+        // The second row: no timestamp (the bare `-` placeholder is kept readable: a whole-cell `-`
+        // is plain text to spreadsheets), a formula in the message gets the apostrophe, no rule id.
+        assert_eq!(&records[1][0], "-");
         assert_eq!(&records[1][2], "critical");
-        assert_eq!(&records[1][3], "'-");
+        assert_eq!(&records[1][3], "-");
         assert_eq!(&records[1][8], "2");
         assert!(
             records[1][9].starts_with("Proc: sshd"),
             "the cell starts with the label, not the formula"
         );
-        assert_eq!(&records[1][12], "'-");
+        assert_eq!(&records[1][12], "-");
         // A cell whose text itself starts with a formula character is neutralized.
         let mut formula_profile = verbose();
         formula_profile.columns = vec![("RawLine".to_string(), Placeholder::RawLine)];
