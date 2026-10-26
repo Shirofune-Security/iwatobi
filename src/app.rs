@@ -195,7 +195,7 @@ pub fn run(opts: &TimelineOptions) -> i32 {
         let live_opts = live::LiveOptions {
             no_wizard: opts.general.no_wizard,
             no_color,
-            since: time_filter.start.map(|s| s.to_rfc3339()),
+            since: time_filter.start.map(|s| format!("@{}", s.timestamp())),
         };
         match live::discover(&needs, &rows, &live_opts, &rules_path) {
             Ok(d) => {
