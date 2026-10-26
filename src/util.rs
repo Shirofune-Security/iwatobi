@@ -8,13 +8,24 @@ use termcolor::{BufferWriter, Color, ColorChoice, ColorSpec, WriteColor};
 
 /// Print `msg` to stdout in `color` (or the default color when `None`).
 pub fn p(color: Option<Color>, msg: &str, newline: bool) {
-    let wtr = BufferWriter::stdout(ColorChoice::Always);
+    // Only emit escape sequences when there is a color to set: `set_color` with an empty spec
+    // would still write a reset sequence, which must not happen with `-K, --no-color`.
+    let wtr = BufferWriter::stdout(if color.is_some() {
+        ColorChoice::Always
+    } else {
+        ColorChoice::Never
+    });
     let mut buf = wtr.buffer();
-    buf.set_color(ColorSpec::new().set_fg(color)).ok();
+    if let Some(c) = color {
+        buf.set_color(ColorSpec::new().set_fg(Some(c))).ok();
+    }
     if newline {
         writeln!(buf, "{msg}").ok();
     } else {
         write!(buf, "{msg}").ok();
+    }
+    if color.is_some() {
+        buf.reset().ok();
     }
     wtr.print(&buf).ok();
 }
@@ -45,6 +56,10 @@ pub fn fatal_error(no_color: bool, msg: &str) -> ! {
 /// Neutralizes CSV/spreadsheet formula injection (CWE-1236) for a single field: a cell starting
 /// with `=`, `+`, `-`, `@`, a tab or a carriage return is prefixed with an apostrophe. CSV only.
 pub fn sanitize_csv_field(field: &str) -> String {
+    // A cell that is only the `-` placeholder is plain text to every spreadsheet; keep it readable.
+    if field == "-" {
+        return field.to_string();
+    }
     if field
         .chars()
         .next()
@@ -155,7 +170,8 @@ mod tests {
     #[test]
     fn csv_formula_prefixes_are_neutralized() {
         assert_eq!(sanitize_csv_field("=1+1"), "'=1+1");
-        assert_eq!(sanitize_csv_field("-"), "'-");
+        assert_eq!(sanitize_csv_field("-"), "-");
+        assert_eq!(sanitize_csv_field("-1+1"), "'-1+1");
         assert_eq!(sanitize_csv_field("@cmd"), "'@cmd");
         assert_eq!(sanitize_csv_field("plain"), "plain");
     }
