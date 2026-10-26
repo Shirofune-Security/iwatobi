@@ -1,0 +1,52 @@
+# Where live analysis (`dfir-timeline -l`) looks for log files.
+#
+# Each entry maps a Sigma logsource (the product/category/service triple as written in the
+# rules) to glob patterns. Rotated files (`.1`, `.2.gz`, `-20261026`) are covered by the
+# trailing `*`. When none of the patterns of a logsource that at least one loaded rule needs
+# matches an existing file, iwatobi asks for a directory to scan or skips those rules
+# (or skips them without asking with `--no-wizard`).
+#
+# Edit a copy of this file in `./config/` next to the iwatobi binary to add locations.
+- logsource: {product: linux, service: syslog}
+  paths: ["/var/log/syslog*", "/var/log/messages*"]
+- logsource: {product: linux, service: auth}
+  paths: ["/var/log/auth.log*", "/var/log/secure*"]
+- logsource: {product: linux, service: sshd}
+  paths: ["/var/log/auth.log*", "/var/log/secure*", "/var/log/syslog*", "/var/log/messages*"]
+- logsource: {product: linux, service: cron}
+  paths: ["/var/log/cron*", "/var/log/syslog*", "/var/log/messages*"]
+- logsource: {product: linux, service: sudo}
+  paths: ["/var/log/auth.log*", "/var/log/secure*", "/var/log/sudo.log*"]
+- logsource: {product: linux, service: vsftpd}
+  paths: ["/var/log/vsftpd.log*", "/var/log/xferlog*", "/var/log/syslog*", "/var/log/messages*"]
+- logsource: {product: linux, service: clamav}
+  paths: ["/var/log/clamav/*.log*", "/var/log/syslog*", "/var/log/messages*"]
+- logsource: {product: linux, service: guacamole}
+  paths: ["/var/log/guacd*.log*", "/var/log/syslog*", "/var/log/messages*"]
+# Rules that only say `product: linux` apply to every syslog-family log.
+- logsource: {product: linux}
+  paths: ["/var/log/syslog*", "/var/log/messages*", "/var/log/auth.log*", "/var/log/secure*", "/var/log/cron*", "/var/log/kern.log*", "/var/log/daemon.log*", "/var/log/user.log*"]
+# Web server error logs (SigmaHQ `service: apache` / `service: nginx` rules).
+- logsource: {service: apache}
+  paths: ["/var/log/apache2/error*.log*", "/var/log/apache2/*error*.log*", "/var/log/httpd/error_log*", "/var/log/httpd/*error_log*"]
+- logsource: {service: nginx}
+  paths: ["/var/log/nginx/error*.log*", "/var/log/nginx/*error*.log*"]
+# Web server access logs (SigmaHQ `category: webserver` rules).
+- logsource: {category: webserver}
+  paths: ["/var/log/apache2/access*.log*", "/var/log/apache2/*access*.log*", "/var/log/httpd/access_log*", "/var/log/httpd/*access_log*", "/var/log/nginx/access*.log*", "/var/log/nginx/*access*.log*"]
+# PHP error log (`error_log` ini setting). PHP errors raised under mod_php without an
+# `error_log` setting land in the Apache error log, which is why it is listed here too.
+- logsource: {product: php, service: error_log}
+  paths: ["/var/log/php_errors.log*", "/var/log/php-errors.log*", "/var/log/php/*.log*", "/var/log/php*.log*", "/var/log/apache2/error*.log*", "/var/log/httpd/error_log*"]
+# php-fpm master process log.
+- logsource: {product: php, service: fpm}
+  paths: ["/var/log/php*-fpm.log*", "/var/log/php-fpm/*.log*", "/var/log/php-fpm.log*"]
+# Taxonomy-canonical Apache / nginx logsources (product + service: error|access).
+- logsource: {product: apache, service: error}
+  paths: ["/var/log/apache2/error*.log*", "/var/log/apache2/*error*.log*", "/var/log/httpd/error_log*", "/var/log/httpd/*error_log*"]
+- logsource: {product: apache, service: access}
+  paths: ["/var/log/apache2/access*.log*", "/var/log/apache2/*access*.log*", "/var/log/httpd/access_log*", "/var/log/httpd/*access_log*"]
+- logsource: {product: nginx, service: error}
+  paths: ["/var/log/nginx/error*.log*", "/var/log/nginx/*error*.log*"]
+- logsource: {product: nginx, service: access}
+  paths: ["/var/log/nginx/access*.log*", "/var/log/nginx/*access*.log*"]

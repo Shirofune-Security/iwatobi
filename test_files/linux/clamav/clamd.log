@@ -1,0 +1,4 @@
+Sun Oct 26 17:40:00 2026 -> +++ Started at Sun Oct 26 17:40:00 2026
+Sun Oct 26 17:40:01 2026 -> Received POSIX_FADVISE
+Sun Oct 26 17:45:00 2026 -> /var/www/html/uploads/x.php: Php.Trojan.Webshell-1 FOUND
+Sun Oct 26 17:45:01 2026 -> /var/www/html/uploads/y.php: Php.Malware.Agent-1234 FOUND

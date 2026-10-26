@@ -1,0 +1,35 @@
+title: Apache Worker Process Exited On Abort Or Bus Error Signal
+id: 7c5719fc-03b7-44ad-9a58-0386a5dd2193
+related:
+    - id: 1da8ce0b-855d-4004-8860-7d64d42063b1
+      type: similar
+status: experimental
+description: |
+    Detects an Apache child process that exited on SIGABRT, SIGBUS, SIGILL or SIGFPE (AH00051). Together
+    with the SigmaHQ "Apache Segmentation Fault" rule this covers every crash signal Apache reports. Memory
+    corruption exploits against PHP such as PHP2Shell (CVE-2026-109618) crash the worker after or instead of
+    spawning a shell; the published honeypot evidence recorded 83 segmentation faults and 7 aborts.
+references:
+    - https://github.com/0x4D31/honeypot-data/blob/main/reports/php2shell/2026-10-24-confirmed-rce.md
+    - https://www.wiz.io/blog/php2shell-php-rce
+author: Zach Mathis (@yamatosecurity)
+date: 2026-10-26
+tags:
+    - attack.impact
+    - attack.t1499.004
+    - attack.initial-access
+    - attack.t1190
+logsource:
+    service: apache
+    definition: 'Requirements: Must be able to collect the error.log file'
+detection:
+    keywords:
+        - 'exit signal Abort (6)'
+        - 'exit signal Aborted (6)'
+        - 'exit signal Bus error (7)'
+        - 'exit signal Illegal instruction (4)'
+        - 'exit signal Floating point exception (8)'
+    condition: keywords
+falsepositives:
+    - Buggy Apache modules or PHP extensions
+level: high

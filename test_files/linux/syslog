@@ -1,0 +1,28 @@
+Oct 26 17:39:01 kali-linux-2025-2 CRON[12345]: (root) CMD (   cd / && run-parts --report /etc/cron.hourly)
+Oct 26 17:39:30 kali-linux-2025-2 systemd[1]: Started session-12.scope - Session 12 of User user.
+Oct 26 17:40:12 kali-linux-2025-2 crontab[12399]: (user) LIST (user)
+Oct 26 17:40:15 kali-linux-2025-2 crontab[12399]: (user) BEGIN EDIT (user)
+Oct 26 17:40:40 kali-linux-2025-2 crontab[12399]: (user) REPLACE (user)
+Oct 26 17:40:40 kali-linux-2025-2 crontab[12399]: (user) END EDIT (user)
+Oct 26 17:41:00 kali-linux-2025-2 systemd[1]: Stopping firewalld.service - firewalld - dynamic firewall daemon...
+Oct 26 17:41:01 kali-linux-2025-2 systemd[1]: firewalld.service: Deactivated successfully.
+Oct 26 17:41:05 kali-linux-2025-2 iptables.init[12500]: Stopping iptables: [  OK  ]
+Oct 26 17:42:30 kali-linux-2025-2 named[2210]: client @0x7f3c0c0a1234 203.0.113.9#5353 (example.com): zone example.com/IN: denied AXFR from 203.0.113.9#5353
+Oct 26 17:42:31 kali-linux-2025-2 named[2210]: dropping source port zero packet from 203.0.113.9#0
+Oct 26 17:42:35 kali-linux-2025-2 named[2210]: resolver priming query complete: success
+Oct 26 17:43:00 kali-linux-2025-2 named[2210]: exiting (due to fatal error)
+Oct 26 17:44:00 kali-linux-2025-2 sshd[13001]: Accepted publickey for user from 203.0.113.5 port 51234 ssh2: ED25519 SHA256:aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789abcdefghijk
+Oct 26 17:44:05 kali-linux-2025-2 sshd[13002]: fatal: buffer_get_string: bad string
+Oct 26 17:44:06 kali-linux-2025-2 sshd[13003]: Corrupted MAC on input.
+Oct 26 17:45:00 kali-linux-2025-2 sudo:     user : TTY=pts/0 ; PWD=/home/user ; USER=root ; COMMAND=/usr/bin/apt update
+Oct 26 17:45:00 kali-linux-2025-2 sudo: pam_unix(sudo:session): session opened for user root(uid=0) by user(uid=1000)
+Oct 26 17:46:00 kali-linux-2025-2 kernel: [12345.678901] usb 1-1: new high-speed USB device number 5 using xhci_hcd
+Oct 26 17:47:00 kali-linux-2025-2 systemd-logind[800]: New session 13 of user user.
+Oct 26 17:49:00 kali-linux-2025-2 rsyslogd: [origin software="rsyslogd" swVersion="8.2412.0" x-pid="700" x-info="https://www.rsyslog.com"] start
+Oct 26 17:50:00 kali-linux-2025-2 postfix/smtpd[15000]: connect from unknown[203.0.113.77]
+Oct 26 17:50:01 kali-linux-2025-2 postfix/smtpd[15000]: disconnect from unknown[203.0.113.77] ehlo=1 quit=1 commands=2
+Oct 26 17:52:00 kali-linux-2025-2 sshd-session[13100]: error: Corrupted MAC on input.
+Oct 26 17:52:01.123456 kali-linux-2025-2 sshd-session[13100]: Connection closed by 203.0.113.5 port 51300 [preauth]
+Oct 26 17:53:00 kali-linux-2025-2 php[14100]: PHP Fatal error:  Allowed memory size of 134217728 bytes exhausted (tried to allocate 4096 bytes) in Unknown on line 0
+Oct  6 17:54:00 kali-linux-2025-2 systemd-logind[800]: Removed session 13.
+Oct 26 17:55:00 2026 kali-linux-2025-2 sudo:     user : TTY=pts/0 ; PWD=/home/user ; USER=root ; COMMAND=/usr/bin/systemctl stop firewalld

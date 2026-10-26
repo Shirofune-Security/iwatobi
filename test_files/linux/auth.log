@@ -1,0 +1,13 @@
+Oct 26 18:00:01 webserver01 sshd[2001]: Invalid user admin from 198.51.100.23 port 40022
+Oct 26 18:00:01 webserver01 sshd[2001]: Received disconnect from 198.51.100.23 port 40022:11: Bye Bye [preauth]
+Oct 26 18:00:05 webserver01 sshd[2002]: error: kex_exchange_identification: unknown or unsupported key type
+Oct 26 18:00:06 webserver01 sshd[2003]: ssh_dispatch_run_fatal: Connection from 198.51.100.23 port 40030: incorrect signature
+Oct 26 18:01:00 webserver01 sudo:   deploy : TTY=pts/1 ; PWD=/srv ; USER=root ; COMMAND=/bin/systemctl restart apache2
+Oct 26 18:01:00 webserver01 sudo: pam_unix(sudo:session): session opened for user root(uid=0) by deploy(uid=1001)
+Oct 26 18:02:00 webserver01 su[2100]: (to root) deploy on pts/1
+Oct 26 18:02:00 webserver01 su[2100]: pam_unix(su:session): session opened for user root(uid=0) by deploy(uid=1001)
+Oct 26 18:03:00 webserver01 CRON[2200]: pam_unix(cron:session): session opened for user root(uid=0) by root(uid=0)
+Oct 26 18:03:00 webserver01 CRON[2200]: pam_unix(cron:session): session closed for user root
+Oct 26 18:04:00 webserver01 systemd-logind[600]: Removed session 15.
+Oct 26 18:05:00 webserver01 sshd-session[2300]: error in libcrypto
+Oct 26 18:05:01 webserver01 sshd-auth[2301]: Invalid user test from 198.51.100.24 port 40100

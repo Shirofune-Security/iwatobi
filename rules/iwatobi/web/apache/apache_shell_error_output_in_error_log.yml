@@ -1,0 +1,36 @@
+title: Shell Error Output In Apache Error Log
+id: e6fac8d5-deb9-4948-a983-000b7b050c66
+status: experimental
+description: |
+    Detects shell diagnostics such as "sh: 1: wget: not found" or "sh: 1: cannot create /var/www/html/p1:
+    Read-only file system" in the Apache error log. Apache copies the stderr of its child processes into the
+    error log without a timestamp, so a shell spawned by a worker, as in PHP2Shell (CVE-2026-109618)
+    exploitation, leaves these lines when the attacker's commands fail. In the published honeypot evidence
+    they followed the execution-stage request of every case whose command included wget or a file write.
+references:
+    - https://github.com/0x4D31/honeypot-data/blob/main/reports/php2shell/2026-10-24-confirmed-rce.md
+    - https://www.wiz.io/blog/php2shell-php-rce
+author: Zach Mathis (@yamatosecurity)
+date: 2026-10-26
+tags:
+    - attack.execution
+    - attack.t1059.004
+    - attack.initial-access
+    - attack.t1190
+logsource:
+    service: apache
+    definition: 'Requirements: Must be able to collect the error.log file'
+detection:
+    keywords:
+        - 'sh: *: not found'
+        - 'sh: *: command not found'
+        - 'sh: *: cannot create *'
+        - 'sh: *: Permission denied'
+        - 'sh: *: cannot open *'
+        - '/bin/sh: *'
+        - '/bin/bash: *'
+        - 'bash: *: command not found'
+    condition: keywords
+falsepositives:
+    - CGI scripts and PHP applications that run shell commands and fail
+level: high

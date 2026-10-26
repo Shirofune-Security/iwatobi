@@ -1,0 +1,11 @@
+[Mon Oct 26 10:00:00.123456 2026] [mpm_event:notice] [pid 1000:tid 1000] AH00489: Apache/2.4.62 (Debian) configured -- resuming normal operations
+[Mon Oct 26 10:00:00.123500 2026] [core:notice] [pid 1000:tid 1000] AH00094: Command line: '/usr/sbin/apache2'
+[Mon Oct 26 10:05:00.000000 2026] [core:notice] [pid 1000:tid 1000] AH00051: child pid 1010 exit signal Abort (6), possible coredump in /etc/apache2
+[Mon Oct 26 10:06:00.500000 2026] [php:error] [pid 1011:tid 1011] [client 203.0.113.10:51000] PHP Fatal error:  Allowed memory size of 134217728 bytes exhausted (tried to allocate 4096 bytes) in Unknown on line 0
+apache2: ../nptl/pthread_mutex_lock.c:428: __pthread_tpp_change_priority: Assertion `new_prio == -1 || (new_prio >= fifo_min_prio && new_prio <= fifo_max_prio)' failed.
+[Mon Oct 26 10:08:00.000000 2026] [core:notice] [pid 1000:tid 1000] AH00051: child pid 1012 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Mon Oct 26 10:09:00.000000 2026] [authz_core:error] [pid 1013:tid 1013] [client 203.0.113.11:51002] AH01630: client denied by server configuration: /var/www/html/.git
+[Mon Oct 26 10:10:00.000000 2026] [proxy_fcgi:error] [pid 1014:tid 1014] [client 203.0.113.12:51003] AH01071: Got error 'Primary script unknown'
+[Mon Oct 26 10:11:00.000000 2026] [:error] [pid 1020] [client ::1:50284] PHP Warning:  PHP Request Startup: Session ID is too long or contains illegal characters. Only the A-Z, a-z, 0-9, "-", and "," characters are allowed in Unknown on line 0, referer: http://example.com/
+[Mon Oct 26 10:12:00.000000 2026] [proxy_fcgi:error] [pid 1021:tid 1021] [client 203.0.113.14:51004] AH01071: Got error 'PHP message: PHP Fatal error:  Allowed memory size of 134217728 bytes exhausted (tried to allocate 20480 bytes) in Unknown on line 0'
+[Mon Oct 26 10:13:00 2026] [error] [client 2001:db8::1] File does not exist: /var/www/favicon.ico

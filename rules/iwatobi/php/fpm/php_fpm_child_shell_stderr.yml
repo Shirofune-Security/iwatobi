@@ -1,0 +1,29 @@
+title: PHP-FPM Child Shell Error Output
+id: 80734917-d8fd-49c2-8685-1ba9cea51dec
+status: experimental
+description: |
+    Detects shell error messages ("sh: 1: wget: not found", "/bin/sh: ...") that a php-fpm worker wrote to
+    stderr (logged by php-fpm as 'child N said into stderr'). A PHP worker only produces shell diagnostics
+    when something made it execute a shell, as the PHP2Shell (CVE-2026-109618) execution stage does; the
+    Apache mod_php honeypots recorded exactly these messages from the spawned shells.
+references:
+    - https://github.com/0x4D31/honeypot-data/blob/main/reports/php2shell/2026-10-24-confirmed-rce.md
+    - https://www.wiz.io/blog/php2shell-php-rce
+author: Zach Mathis (@yamatosecurity)
+date: 2026-10-26
+tags:
+    - attack.execution
+    - attack.t1059.004
+logsource:
+    product: php
+    service: fpm
+detection:
+    keywords:
+        - 'said into stderr: "sh: '
+        - 'said into stderr: "/bin/sh: '
+        - 'said into stderr: "bash: '
+        - 'said into stderr: "/bin/bash: '
+    condition: keywords
+falsepositives:
+    - PHP applications that intentionally run shell commands (shell_exec, system, exec) and fail
+level: high

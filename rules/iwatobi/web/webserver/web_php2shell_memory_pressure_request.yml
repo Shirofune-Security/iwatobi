@@ -1,0 +1,28 @@
+title: PHP2Shell PoC Memory Pressure Request
+id: 9185e0c8-8aba-4a13-b89d-604162edecdf
+status: experimental
+description: |
+    Detects the first memory-pressure request of the public PHP2Shell (CVE-2026-109618) proof of concept:
+    a POST whose query string carries the numbered dummy parameters q0000000=v&q0000001=v&... . All 52
+    memory-pressure requests in the published honeypot evidence used this exact query string (POST / and
+    POST /index.php).
+references:
+    - https://github.com/9bie/php2shell-bypass-aslr-exp
+    - https://github.com/0x4D31/honeypot-data/blob/main/reports/php2shell/2026-10-24-confirmed-rce.md
+    - https://www.wiz.io/blog/php2shell-php-rce
+author: Zach Mathis (@yamatosecurity)
+date: 2026-10-26
+tags:
+    - attack.initial-access
+    - attack.t1190
+    - cve.2026-109618
+logsource:
+    category: webserver
+detection:
+    selection:
+        cs-method: 'POST'
+        cs-uri-query|contains: 'q0000000=v&q0000001=v'
+    condition: selection
+falsepositives:
+    - Unlikely
+level: high

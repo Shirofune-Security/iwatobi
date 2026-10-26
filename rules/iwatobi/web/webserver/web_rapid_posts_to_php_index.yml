@@ -1,0 +1,48 @@
+title: Rapid Repeated POST Requests To PHP Index Page
+id: 1f36585e-0f83-4f4b-8a5a-b0194f9f798c
+status: experimental
+description: |
+    Detects three or more POST requests to the web root or index.php from the same client within 60 seconds.
+    The PHP2Shell (CVE-2026-109618) exploit chain sends four large multipart POSTs (memory pressure, memory
+    disclosure, memory pressure, execution) to / or /index.php within a few seconds, typically without a
+    User-Agent header. The final request often has no access-log entry because the worker crashes, so the
+    threshold is three.
+references:
+    - https://github.com/0x4D31/honeypot-data/blob/main/reports/php2shell/2026-10-24-confirmed-rce.md
+    - https://www.wiz.io/blog/php2shell-php-rce
+author: Zach Mathis (@yamatosecurity)
+date: 2026-10-26
+tags:
+    - attack.initial-access
+    - attack.t1190
+    - cve.2026-109618
+correlation:
+    type: event_count
+    rules:
+        - post_to_php_index
+    group-by:
+        - c-ip
+    timespan: 60s
+    condition:
+        gte: 3
+falsepositives:
+    - Forms, APIs and login pages that legitimately receive bursts of POST requests to the index page
+level: medium
+---
+title: POST Request To Web Root Or PHP Index
+name: post_to_php_index
+id: bbddfb19-a24d-4865-b0ee-22c7831ded7f
+status: experimental
+description: Base rule of the correlation above. Not reported on its own.
+author: Zach Mathis (@yamatosecurity)
+date: 2026-10-26
+logsource:
+    category: webserver
+detection:
+    selection:
+        cs-method: 'POST'
+        cs-uri-stem:
+            - '/'
+            - '/index.php'
+    condition: selection
+level: informational

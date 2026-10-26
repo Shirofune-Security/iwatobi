@@ -1,0 +1,6 @@
+Oct 26 03:12:44 rhel9-web sshd[31337]: error: PAM: Authentication failure for root from 192.0.2.44
+Oct 26 03:12:50 rhel9-web sshd[31338]: fatal: buffer_get_string: bad string
+Oct 26 03:13:00 rhel9-web sshd[31339]: error in libcrypto
+Oct 26 03:14:00 rhel9-web sudo[31400]:    ec2-user : TTY=pts/0 ; PWD=/home/ec2-user ; USER=root ; COMMAND=/bin/bash
+Oct 26 03:15:00 rhel9-web unix_chkpwd[31450]: password check failed for user (root)
+Oct 26 03:15:00 rhel9-web sshd[31451]: pam_unix(sshd:auth): authentication failure; logname= uid=0 euid=0 tty=ssh ruser= rhost=192.0.2.44  user=root

@@ -1,0 +1,32 @@
+title: PHP-FPM Child Process Exited On Signal
+id: 1a93cff9-51f1-4f5f-ad93-2c27e50d66c1
+status: experimental
+description: |
+    Detects a php-fpm worker that died from a segmentation fault, abort or bus error. PHP-FPM is one of the
+    SAPIs affected by PHP2Shell (CVE-2026-109618 / CVE-2026-109619); on Apache mod_php the same exploit chain
+    left the worker crashing with SIGSEGV or SIGABRT right after the execution stage. This is the php-fpm
+    counterpart of the Apache worker crash rules.
+references:
+    - https://www.wiz.io/blog/php2shell-php-rce
+    - https://watchtowr.com/intelligence/php-remote-code-execution-php2shell/
+    - https://github.com/0x4D31/honeypot-data/blob/main/reports/php2shell/2026-10-24-confirmed-rce.md
+author: Zach Mathis (@yamatosecurity)
+date: 2026-10-26
+tags:
+    - attack.initial-access
+    - attack.t1190
+    - attack.impact
+    - attack.t1499.004
+logsource:
+    product: php
+    service: fpm
+detection:
+    keywords:
+        - 'exited on signal 11 (SIGSEGV'
+        - 'exited on signal 6 (SIGABRT'
+        - 'exited on signal 7 (SIGBUS'
+        - 'exited on signal 4 (SIGILL'
+    condition: keywords
+falsepositives:
+    - Buggy PHP extensions
+level: high

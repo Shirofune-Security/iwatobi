@@ -1,0 +1,30 @@
+title: PHP Session ID Too Long Or Illegal Characters (PHP2Shell Memory Disclosure)
+id: 476abbe6-3907-4ed2-b775-18c7dc2a7d6d
+status: experimental
+description: |
+    Detects the PHP request start-up warning "Session ID is too long or contains illegal characters". The
+    memory-disclosure stage of the PHP2Shell (CVE-2026-109618) exploit chain returns a PHPSESSID of
+    hundreds of kilobytes of leaked heap memory, which the next request echoes back as a cookie and PHP
+    rejects with this warning. It was logged for all 51 memory-disclosure requests in the published
+    honeypot evidence. Ordinary clients never send a session ID that PHP itself did not generate.
+references:
+    - https://www.wiz.io/blog/php2shell-php-rce
+    - https://watchtowr.com/intelligence/php-remote-code-execution-php2shell/
+    - https://github.com/0x4D31/honeypot-data/blob/main/reports/php2shell/2026-10-24-confirmed-rce.md
+author: Zach Mathis (@yamatosecurity)
+date: 2026-10-26
+tags:
+    - attack.initial-access
+    - attack.t1190
+    - cve.2026-109618
+logsource:
+    product: php
+    service: error_log
+detection:
+    keywords:
+        - 'Session ID is too long or contains illegal characters'
+    condition: keywords
+falsepositives:
+    - Vulnerability scanners and fuzzers sending malformed PHPSESSID cookies
+    - Broken clients or proxies corrupting the session cookie
+level: high

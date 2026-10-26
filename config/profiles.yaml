@@ -1,0 +1,119 @@
+# Output profiles. Select one with `-p, --profile`. Each key becomes a column (CSV header / JSON
+# key) and the value names the information placed in it.
+#
+# Defaults: results printed to the terminal use `standard`; results saved with `-o` use `verbose`.
+#
+# Available placeholders:
+#   %Timestamp%        event time (local time, or UTC with -U)
+#   %RuleTitle%        Sigma rule title
+#   %Level%            Sigma rule level
+#   %Computer%         hostname from the log line, or the local hostname in live analysis
+#   %LogSource%        the log source the event was classified as (ex: linux/sshd, webserver, apache, php/error_log)
+#   %Details%          the key fields of the event (ex: Proc, PID, Msg for syslog)
+#   %ExtraFieldInfo%   every other parsed field
+#   %AllFieldInfo%     every parsed field
+#   %RawLine%          the original log line
+#   %LineNumber%       line number inside the log file
+#   %LogFile%          path of the log file
+#   %MitreTactics%     MITRE ATT&CK tactics (abbreviated with config/mitre_tactics.txt)
+#   %MitreTags%        MITRE ATT&CK technique, software and group IDs
+#   %OtherTags%        every other tag (ex: cve.2026-109618)
+#   %RuleFile%         rule file name
+#   %RuleID%           Sigma rule id
+#   %RuleAuthor%       rule author
+#   %RuleCreationDate% rule date
+#   %RuleModifiedDate% rule modified date
+#   %Status%           rule status
+#   %Description%      rule description
+#   %References%       rule references
+#   %FalsePositives%   rule false positives
+
+# Timestamp, alert name, level and the event details only.
+minimal:
+    Timestamp: "%Timestamp%"
+    RuleTitle: "%RuleTitle%"
+    Level: "%Level%"
+    Details: "%Details%"
+
+# Default for the terminal.
+standard:
+    Timestamp: "%Timestamp%"
+    RuleTitle: "%RuleTitle%"
+    Level: "%Level%"
+    Computer: "%Computer%"
+    LogSource: "%LogSource%"
+    Details: "%Details%"
+
+# Default for files saved with -o: standard plus MITRE ATT&CK tags, all parsed fields,
+# and the rule and log file information.
+verbose:
+    Timestamp: "%Timestamp%"
+    RuleTitle: "%RuleTitle%"
+    Level: "%Level%"
+    Computer: "%Computer%"
+    LogSource: "%LogSource%"
+    MitreTactics: "%MitreTactics%"
+    MitreTags: "%MitreTags%"
+    OtherTags: "%OtherTags%"
+    LineNumber: "%LineNumber%"
+    Details: "%Details%"
+    ExtraFieldInfo: "%ExtraFieldInfo%"
+    RuleFile: "%RuleFile%"
+    RuleID: "%RuleID%"
+    LogFile: "%LogFile%"
+
+# As much information as possible.
+super-verbose:
+    Timestamp: "%Timestamp%"
+    RuleTitle: "%RuleTitle%"
+    Level: "%Level%"
+    Computer: "%Computer%"
+    LogSource: "%LogSource%"
+    MitreTactics: "%MitreTactics%"
+    MitreTags: "%MitreTags%"
+    OtherTags: "%OtherTags%"
+    LineNumber: "%LineNumber%"
+    Details: "%Details%"
+    ExtraFieldInfo: "%ExtraFieldInfo%"
+    RawLine: "%RawLine%"
+    RuleAuthor: "%RuleAuthor%"
+    RuleCreationDate: "%RuleCreationDate%"
+    RuleModifiedDate: "%RuleModifiedDate%"
+    Status: "%Status%"
+    Description: "%Description%"
+    References: "%References%"
+    FalsePositives: "%FalsePositives%"
+    RuleFile: "%RuleFile%"
+    RuleID: "%RuleID%"
+    LogFile: "%LogFile%"
+
+# Verbose profile with all field information instead of Details and ExtraFieldInfo.
+all-field-info:
+    Timestamp: "%Timestamp%"
+    RuleTitle: "%RuleTitle%"
+    Level: "%Level%"
+    Computer: "%Computer%"
+    LogSource: "%LogSource%"
+    LineNumber: "%LineNumber%"
+    AllFieldInfo: "%AllFieldInfo%"
+    RuleFile: "%RuleFile%"
+    RuleID: "%RuleID%"
+    LogFile: "%LogFile%"
+
+# All field information plus tags and rule metadata.
+all-field-info-verbose:
+    Timestamp: "%Timestamp%"
+    RuleTitle: "%RuleTitle%"
+    Level: "%Level%"
+    Computer: "%Computer%"
+    LogSource: "%LogSource%"
+    MitreTactics: "%MitreTactics%"
+    MitreTags: "%MitreTags%"
+    OtherTags: "%OtherTags%"
+    LineNumber: "%LineNumber%"
+    AllFieldInfo: "%AllFieldInfo%"
+    RuleAuthor: "%RuleAuthor%"
+    Status: "%Status%"
+    RuleFile: "%RuleFile%"
+    RuleID: "%RuleID%"
+    LogFile: "%LogFile%"

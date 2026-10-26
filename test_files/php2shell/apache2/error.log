@@ -1,0 +1,93 @@
+[Sat Oct 24 13:00:00.000000 2026] [mpm_prefork:notice] [pid 1:tid 1] AH00163: Apache/2.4.65 (Debian) PHP/8.4.26 configured -- resuming normal operations
+[Sat Oct 24 13:00:00.000100 2026] [core:notice] [pid 1:tid 1] AH00094: Command line: '/usr/sbin/apache2 -D FOREGROUND'
+sh: 1: cannot create /var/www/html/p1: Read-only file system
+sh: 1: cannot create /var/www/p1: Read-only file system
+sh: 1: wget: not found
+[Sat Oct 24 15:35:39.379473 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 31 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 15:35:42.383931 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 34 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+sh: 1: cannot create /var/www/html/p1: Read-only file system
+sh: 1: cannot create /var/www/html/p1: Read-only file system
+sh: 1: cannot create /var/www/p1: Read-only file system
+sh: 1: cannot create /var/www/p1: Read-only file system
+sh: 1: wget: not found
+sh: 1: wget: not found
+sh: 1: cannot create /var/www/html/p1: Read-only file system
+sh: 1: cannot create /var/www/html/p1: Read-only file system
+sh: 1: cannot create /var/www/p1: Read-only file system
+sh: 1: cannot create /var/www/p1: Read-only file system
+sh: 1: wget: not found
+sh: 1: wget: not found
+[Sat Oct 24 16:04:10.220795 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 35 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 16:04:17.230799 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 36 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 16:04:20.235004 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 39 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 16:04:27.246112 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 40 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 16:04:30.251091 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 43 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 16:47:59.529777 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 47 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 16:48:03.535746 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 50 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 16:49:15.610742 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 51 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 16:49:19.617920 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 54 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 16:50:32.698829 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 55 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 16:50:36.704650 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 58 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 16:53:03.863284 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 59 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 16:53:06.868024 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 62 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+sh: 1: wget: not found
+[Sat Oct 24 16:55:35.027787 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 63 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 16:55:44.039409 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 66 exit signal Abort (6), possible coredump in /etc/apache2
+sh: 1: wget: not found
+[Sat Oct 24 16:58:11.195973 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 67 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 16:58:14.201786 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 70 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+sh: 1: wget: not found
+[Sat Oct 24 16:58:27.218355 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 71 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 16:58:31.224125 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 73 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+sh: 1: wget: not found
+[Sat Oct 24 16:58:42.236822 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 74 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 16:58:46.242724 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 76 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+sh: 1: wget: not found
+[Sat Oct 24 17:00:01.319245 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 77 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 17:00:05.325915 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 80 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 17:01:17.406401 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 81 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+sh: 1: wget: not found
+[Sat Oct 24 17:27:03.698561 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 36 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 17:27:26.726164 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 37 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 17:27:33.734889 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 39 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 17:28:41.170930 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 95 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 17:34:43.565946 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 104 exit signal Abort (6), possible coredump in /etc/apache2
+[Sat Oct 24 18:10:36.619786 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 48 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 18:10:39.625257 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 54 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 18:13:00.782178 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 55 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 18:13:06.790146 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 61 exit signal Abort (6), possible coredump in /etc/apache2
+[Sat Oct 24 18:15:31.952387 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 62 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 18:15:34.956373 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 68 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 18:17:55.116750 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 69 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 18:18:01.126316 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 75 exit signal Abort (6), possible coredump in /etc/apache2
+[Sat Oct 24 18:20:22.281991 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 76 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 18:20:25.288282 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 81 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 18:21:01.527003 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 114 exit signal Abort (6), possible coredump in /etc/apache2
+[Sat Oct 24 18:23:26.684365 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 115 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 18:23:29.689288 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 120 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 18:41:45.261311 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 23 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 18:43:26.012483 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 25 exit signal Abort (6), possible coredump in /etc/apache2
+[Sat Oct 24 18:44:08.426212 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 24 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 18:44:11.430349 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 29 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+sh: 1: wget: not found
+sh: 1: wget: not found
+[Sat Oct 24 18:45:50.164846 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 26 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 18:45:53.169814 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 30 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+sh: 1: wget: not found
+sh: 1: wget: not found
+[Sat Oct 24 18:46:05.185385 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 31 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 18:46:09.191221 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 34 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 18:46:21.206857 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 35 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 18:46:25.212739 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 38 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 18:54:54.012507 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 21 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 18:54:59.018531 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 22 exit signal Abort (6), possible coredump in /etc/apache2
+sh: 1: wget: not found
+sh: 1: wget: not found
+sh: 1: wget: not found
+sh: 1: wget: not found
+[Sat Oct 24 18:57:18.174808 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 23 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 18:57:20.178512 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 27 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 18:57:24.186781 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 28 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 18:57:26.190953 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 31 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 18:57:30.196945 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 32 exit signal Segmentation fault (11), possible coredump in /etc/apache2
+[Sat Oct 24 18:57:32.200911 2026] [core:notice] [pid 1:tid 1] AH00051: child pid 35 exit signal Segmentation fault (11), possible coredump in /etc/apache2

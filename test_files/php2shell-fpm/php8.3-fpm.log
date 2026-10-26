@@ -1,0 +1,8 @@
+[26-Oct-2026 11:00:00] NOTICE: fpm is running, pid 1
+[26-Oct-2026 11:00:00] NOTICE: ready to handle connections
+[26-Oct-2026 11:00:59] WARNING: [pool www] seems busy (you may need to increase pm.start_servers, or pm.min/max_spare_servers), spawning 8 children, there are 0 idle, and 5 total children
+[26-Oct-2026 11:01:00] WARNING: [pool www] child 2010 said into stderr: "sh: 1: wget: not found"
+[26-Oct-2026 11:01:01] WARNING: [pool www] child 2010 exited on signal 11 (SIGSEGV - core dumped) after 120.512345 seconds from start
+[26-Oct-2026 11:01:01] NOTICE: [pool www] child 2011 started
+[26-Oct-2026 11:05:00] WARNING: [pool www] child 2012 said into stderr: "PHP Warning:  PHP Request Startup: Session ID is too long or contains illegal characters. Only the A-Z, a-z, 0-9, "-", and "," characters are allowed in Unknown on line 0"
+[26-Oct-2026 11:05:01] WARNING: [pool www] child 2012 exited on signal 6 (SIGABRT - core dumped) after 10.000000 seconds from start

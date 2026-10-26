@@ -1,0 +1,31 @@
+title: PHP Memory Exhausted Before Script Execution (PHP2Shell Memory Pressure)
+id: 34b3599a-6677-409d-8400-073729193336
+status: experimental
+description: |
+    Detects a PHP fatal "Allowed memory size exhausted" error raised "in Unknown on line 0", that is during
+    request start-up before any application script ran. The PHP2Shell (CVE-2026-109618 / CVE-2026-109619)
+    exploit chain exhausts the request memory limit with huge chunked multipart bodies; in the published
+    honeypot evidence this error preceded every one of the 35 confirmed shells. A legitimate script that runs
+    out of memory reports its own file name and line number instead of "Unknown on line 0".
+references:
+    - https://www.wiz.io/blog/php2shell-php-rce
+    - https://watchtowr.com/intelligence/php-remote-code-execution-php2shell/
+    - https://github.com/0x4D31/honeypot-data/blob/main/reports/php2shell/2026-10-24-confirmed-rce.md
+    - https://github.com/9bie/php2shell-bypass-aslr-exp
+author: Zach Mathis (@yamatosecurity)
+date: 2026-10-26
+tags:
+    - attack.initial-access
+    - attack.t1190
+    - cve.2026-109618
+    - cve.2026-109619
+logsource:
+    product: php
+    service: error_log
+detection:
+    keywords:
+        - 'Allowed memory size of * exhausted * in Unknown on line 0'
+    condition: keywords
+falsepositives:
+    - A memory_limit far too small for the application, which exhausts memory while PHP parses an ordinary large request (check the request sizes and sources)
+level: high

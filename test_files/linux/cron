@@ -1,0 +1,5 @@
+Oct 26 04:00:01 rhel9-web CROND[4000]: (root) CMD (run-parts /etc/cron.hourly)
+Oct 26 04:00:01 rhel9-web run-parts[4001]: (/etc/cron.hourly) starting 0anacron
+Oct 26 04:05:10 rhel9-web crontab[4100]: (apache) REPLACE (apache)
+Oct 26 04:05:11 rhel9-web crontab[4100]: (apache) END EDIT (apache)
+Oct 26 04:06:00 rhel9-web anacron[4200]: Job `cron.daily' started

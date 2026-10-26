@@ -1,0 +1,28 @@
+title: PHP POST Content-Length Exceeds Limit
+id: 411dc81f-eb64-406a-80db-be47b5b5af58
+status: experimental
+description: |
+    Detects the PHP warning raised when a POST body is larger than post_max_size. The PHP2Shell
+    (CVE-2026-109618) memory-disclosure stage is a 33 MB multipart POST, so on servers with a default
+    post_max_size this warning accompanies exploitation attempts (29 such warnings were recorded during the
+    22-24 October 2026 attempt-only honeypot window). Large legitimate uploads raise it too, so treat it as
+    a low-confidence indicator to be combined with the other PHP2Shell rules.
+references:
+    - https://github.com/0x4D31/honeypot-data/blob/main/reports/php2shell/2026-10-22-to-24-initial-attempts.md
+    - https://www.wiz.io/blog/php2shell-php-rce
+author: Zach Mathis (@yamatosecurity)
+date: 2026-10-26
+tags:
+    - attack.initial-access
+    - attack.t1190
+    - cve.2026-109618
+logsource:
+    product: php
+    service: error_log
+detection:
+    keywords:
+        - 'POST Content-Length of * bytes exceeds the limit of * bytes'
+    condition: keywords
+falsepositives:
+    - Legitimate uploads larger than post_max_size
+level: low

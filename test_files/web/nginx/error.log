@@ -1,0 +1,5 @@
+2026/10/26 11:00:00 [notice] 2000#2000: using the "epoll" event method
+2026/10/26 11:00:00 [notice] 2000#2000: nginx/1.26.3
+2026/10/26 11:01:00 [error] 2001#2001: *15 upstream prematurely closed connection while reading response header from upstream, client: 203.0.113.10, server: _, request: "POST /index.php HTTP/1.1", upstream: "fastcgi://unix:/run/php/php8.3-fpm.sock:", host: "example.com"
+2026/10/26 11:01:01 [alert] 2000#2000: worker process 2001 exited on signal 6 (core dumped)
+2026/10/26 11:02:00 [error] 2002#2002: *16 open() "/var/www/html/favicon.ico" failed (2: No such file or directory), client: 203.0.113.11, server: _, request: "GET /favicon.ico HTTP/1.1", host: "example.com", referrer: "http://example.com/"

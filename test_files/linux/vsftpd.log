@@ -1,0 +1,4 @@
+Sun Oct 26 17:39:01 2026 [pid 1234] CONNECT: Client "::ffff:203.0.113.40"
+Sun Oct 26 17:39:02 2026 [pid 1233] [ftpuser] FAIL LOGIN: Client "::ffff:203.0.113.40"
+Sun Oct 26 17:39:05 2026 [pid 1233] [ftpuser] OK LOGIN: Client "::ffff:203.0.113.40"
+Sun Oct 26 17:39:10 2026 [pid 1235] [ftpuser] OK DOWNLOAD: Client "::ffff:203.0.113.40", "/pub/file.bin", 1024 bytes, 10.00Kbyte/sec
