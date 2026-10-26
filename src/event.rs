@@ -126,6 +126,8 @@ pub struct ParsedEvent {
     pub timestamp: Option<DateTime<FixedOffset>>,
     /// True when the line had no timestamp of its own and borrowed the previous entry's.
     pub timestamp_inferred: bool,
+    /// True when the line's timestamp carried its own timezone (so `-z` was not needed for it).
+    pub tz_explicit: bool,
     /// Host name from the line (syslog) or the hostname hint (live analysis).
     pub hostname: Option<String>,
     /// Shown in the `LogSource` column, e.g. `linux/sshd`, `webserver`, `apache`, `php/error_log`.
@@ -144,6 +146,7 @@ impl ParsedEvent {
         Self {
             timestamp: None,
             timestamp_inferred: false,
+            tz_explicit: false,
             hostname: None,
             primary_logsource: primary.display(),
             tags: vec![*primary],

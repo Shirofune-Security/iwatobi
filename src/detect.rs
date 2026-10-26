@@ -148,7 +148,7 @@ pub fn scan_lines<I: Iterator<Item = String>>(
             result.summary.see_time(t);
             if event.timestamp_inferred {
                 // borrowed timestamps say nothing about the source's zone handling
-            } else if zone_was_explicit(&event) {
+            } else if event.tz_explicit {
                 saw_zoned = true;
             } else {
                 saw_naive = true;
@@ -190,12 +190,4 @@ pub fn scan_lines<I: Iterator<Item = String>>(
         }
     }
     result.mixed_zone_sources = saw_zoned && saw_naive;
-}
-
-/// Parsers record whether the line carried its own zone in the `tz_explicit` field.
-fn zone_was_explicit(event: &ParsedEvent) -> bool {
-    matches!(
-        event.field("tz_explicit"),
-        Some(crate::event::FieldValue::Bool(true))
-    )
 }
