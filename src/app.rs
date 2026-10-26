@@ -419,7 +419,7 @@ struct ScanState {
 impl ScanState {
     fn empty() -> Self {
         Self {
-            writers: Writers { paths: Vec::new() },
+            writers: Writers::empty(),
             summary: Summary::default(),
             base_hits: Vec::new(),
             mixed_zone_files: 0,
