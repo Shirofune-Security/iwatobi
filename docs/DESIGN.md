@@ -398,7 +398,7 @@ reported; the progress bar is hidden while rows stream to the terminal; a closed
 quietly; `--time-offset` overflow is a CLI error; an unreadable or unrecognized `-f` file exits 1; the output
 file can never be an input; error-log names are unique per run.
 
-A18. **Log location on the terminal (post-0.1.0).** `standard` is Timestamp, RuleTitle, Level, Computer,
+A18. **Log location on the terminal (0.1.0 re-release).** `standard` is Timestamp, RuleTitle, Level, Computer,
 LogSource, LogFile, LineNumber, Details, so every terminal alert says where it was logged. A correlation row's
 LogFile lists the files of its member events (deduplicated, in member order) and its LineNumber stays null.
 PHP error log events keep only `php_type` and `message` as Details; PHP's own script location (`file`, `line`,
