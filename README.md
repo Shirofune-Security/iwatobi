@@ -175,8 +175,8 @@ file's modification time is assumed, minus one for lines that would otherwise be
 | Profile | Columns |
 | --- | --- |
 | `minimal` | Timestamp, RuleTitle, Level, Details |
-| `standard` (terminal default) | Timestamp, RuleTitle, Level, Computer, LogSource, Details |
-| `verbose` (file default) | standard + MitreTactics, MitreTags, OtherTags, LineNumber, ExtraFieldInfo, RuleFile, RuleID, LogFile |
+| `standard` (terminal default) | Timestamp, RuleTitle, Level, Computer, LogSource, LogFile, LineNumber, Details |
+| `verbose` (file default) | standard + MitreTactics, MitreTags, OtherTags, ExtraFieldInfo, RuleFile, RuleID |
 | `super-verbose` | verbose + RawLine, RuleAuthor, RuleCreationDate, RuleModifiedDate, Status, Description, References, FalsePositives |
 | `all-field-info`, `all-field-info-verbose` | every parsed field instead of Details / ExtraFieldInfo |
 
@@ -184,6 +184,11 @@ file's modification time is assumed, minus one for lines that would otherwise be
 `URI`, `Status`, `Bytes`, `Referer`, `UA` for access logs; ...) and `ExtraFieldInfo` the rest. In
 CSV and on the terminal they are rendered as `Key: value ¦ Key: value`; in JSON/JSONL they are
 objects. Run `iwatobi list-profiles` to see the exact columns.
+
+`LogFile` and `LineNumber` say where the event was logged. For a correlation alert, `LogFile` lists
+the files its events came from and `LineNumber` is `-`. The script location that PHP itself
+reports (`... in /var/www/html/index.php on line 12`) is not a log location: it is kept in
+`ExtraFieldInfo` as `PhpFile` / `PhpLine`.
 
 ## 📏 Rules
 

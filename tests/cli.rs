@@ -153,8 +153,12 @@ fn php2shell_php_error_log() {
     assert_eq!(first["LogSource"], "php/error_log");
     assert_eq!(first["Level"], "high");
     assert_eq!(first["Details"]["Type"], "Fatal error");
-    assert_eq!(first["Details"]["Line"], 0);
-    assert_eq!(first["Details"]["File"], "Unknown");
+    // PHP's own script location ("in Unknown on line 0") is an extra field, not a detail
+    assert!(first["Details"].get("PhpFile").is_none());
+    assert_eq!(first["ExtraFieldInfo"]["PhpLine"], 0);
+    assert_eq!(first["ExtraFieldInfo"]["PhpFile"], "Unknown");
+    assert_eq!(first["LogFile"], "test_files/php2shell/php-error.log");
+    assert_eq!(first["LineNumber"], 1);
     assert!(
         first["MitreTactics"]
             .as_array()
@@ -457,15 +461,16 @@ fn stdout_uses_the_standard_profile_and_colors_can_be_disabled() {
     ]);
     assert_eq!(r.code, 0, "{}", r.stderr);
     assert!(
-        r.stdout
-            .contains("Timestamp · RuleTitle · Level · Computer · LogSource · Details"),
+        r.stdout.contains(
+            "Timestamp · RuleTitle · Level · Computer · LogSource · LogFile · LineNumber · Details"
+        ),
         "{}",
         r.stdout
     );
     // RFC 3164 lines have no year (it is inferred from the file's modification time), so only the rest is checked
     assert!(
         r.stdout.contains(
-            "-10-26 04:05:10.000 +00:00 · Modifying Crontab · medium · rhel9-web · linux/cron · "
+            "-10-26 04:05:10.000 +00:00 · Modifying Crontab · medium · rhel9-web · linux/cron · test_files/linux/cron · 3 · "
         ),
         "{}",
         r.stdout

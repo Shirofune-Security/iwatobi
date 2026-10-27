@@ -1,5 +1,15 @@
 # Changes
 
+## x.x.x [xxxx/xx/xx]
+
+**Enhancements:**
+
+- The `standard` profile (terminal output) now shows the `LogFile` and `LineNumber` of each alert. Correlation alerts list the log files of their events in `LogFile`. (@YamatoSecurity)
+
+**Bug Fixes:**
+
+- PHP error log alerts showed `File: Unknown ¦ Line: 0` in `Details`. This is the script location PHP reports, not the log location, and it was already part of `Msg`. It is now in `ExtraFieldInfo` as `PhpFile` / `PhpLine`. (@YamatoSecurity)
+
 ## 0.1.0 [2026/10/27] - Rockhopper Release
 
 **New Features:**
