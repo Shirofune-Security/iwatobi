@@ -47,7 +47,7 @@ honeypot evidence of confirmed remote code execution.
   Apache 2.2/2.4 and nginx error logs, PHP error logs and php-fpm logs. PHP engine messages are
   recognised wherever they appear (Apache error log, nginx FastCGI stderr, php-fpm, syslog).
 - **Output**: a colored timeline on the terminal (timestamp, rule title, level, computer, log
-  source, details), and CSV / JSON / JSONL files with everything a DFIR report needs: MITRE ATT&CK
+  source, log file, line number, details), and CSV / JSON / JSONL files with everything a DFIR report needs: MITRE ATT&CK
   tactics and techniques, every parsed field, rule file and ID, log file and line number. Profiles
   are configurable in `config/profiles.yaml`.
 - **Timezone aware**: logs that carry no zone (syslog, Apache error log, php-fpm) are read in the
