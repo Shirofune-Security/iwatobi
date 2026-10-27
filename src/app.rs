@@ -17,10 +17,12 @@ use crate::rules::{self, RuleFilters, RuleSet};
 use crate::summary::{self, Summary};
 use crate::util::{self, error_msg, fatal_error, p, p_label, warn_msg};
 use chrono::{DateTime, Utc};
+use indicatif::{ProgressBar, ProgressDrawTarget};
 use rayon::prelude::*;
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 /// Exit status of the command (0 = ok, 1 = usage/runtime error).
 pub fn run(opts: &TimelineOptions) -> i32 {
@@ -326,17 +328,30 @@ pub fn run(opts: &TimelineOptions) -> i32 {
     let ruleset_ref = &ruleset;
     let profile_ref = &render_profile;
     let opts_ref = &render_opts;
-    // Rows streamed to the terminal and a redrawing bar would overwrite each other.
-    let bar = {
-        let st = state.lock().unwrap_or_else(|e| e.into_inner());
-        progress_bar(
-            targets.len(),
-            no_color || opts.common.quiet || st.writers.writes_stdout(),
-        )
-    };
+    // Like Hayabusa, the progress bar is shown only when the results are saved to a file: rows
+    // streamed to the terminal and a redrawing bar would overwrite each other.
+    let saving_to_file = !state
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .writers
+        .writes_stdout();
+    let bar = saving_to_file.then(|| {
+        p(
+            IwatobiColor::Orange.rdg(no_color),
+            "Scanning in progress. Please wait.",
+            true,
+        );
+        util::p(None, "", true);
+        progress_bar(targets.len() + usize::from(journal.is_some()), no_color)
+    });
     targets.par_iter().for_each(|target| {
+        if let Some(b) = &bar {
+            b.set_message(progress_message(&target.path));
+        }
         let result = scan_target(target, ruleset_ref, &scan_opts);
-        report_file(target, &result, verbose || single_file, no_color);
+        with_bar_suspended(&bar, || {
+            report_file(target, &result, verbose || single_file, no_color)
+        });
         let mut st = state.lock().unwrap_or_else(|e| e.into_inner());
         consume_result(&mut st, result, ruleset_ref, profile_ref, opts_ref);
         if let Some(b) = &bar {
@@ -360,6 +375,9 @@ pub fn run(opts: &TimelineOptions) -> i32 {
                     .collect::<Vec<String>>()
             })
         });
+        if let Some(b) = &bar {
+            b.set_message("journalctl");
+        }
         if let Some(stdout) = child.stdout.take() {
             let mut ctx = ParseContext::new(Path::new("."), tz);
             ctx.display_name = "journalctl".to_string();
@@ -379,9 +397,12 @@ pub fn run(opts: &TimelineOptions) -> i32 {
                 &scan_opts,
                 &mut result,
             );
-            report_file(&target, &result, verbose, no_color);
+            with_bar_suspended(&bar, || report_file(&target, &result, verbose, no_color));
             let mut st = state.lock().unwrap_or_else(|e| e.into_inner());
             consume_result(&mut st, result, ruleset_ref, profile_ref, opts_ref);
+        }
+        if let Some(b) = &bar {
+            b.inc(1);
         }
         let stderr_lines = stderr_reader
             .and_then(|t| t.join().ok())
@@ -396,20 +417,20 @@ pub fn run(opts: &TimelineOptions) -> i32 {
         if partial {
             let msg = "journalctl could not read the system journal completely (run as root or as a member of systemd-journal); results may be incomplete";
             log_warn(msg);
-            warn_msg(no_color, msg);
+            with_bar_suspended(&bar, || warn_msg(no_color, msg));
         }
         match child.wait() {
             Ok(status) if !status.success() => {
                 let msg = format!("journalctl exited with {status}; the journal may be incomplete");
                 log_warn(&msg);
-                warn_msg(no_color, &msg);
+                with_bar_suspended(&bar, || warn_msg(no_color, &msg));
             }
             Err(e) => log_warn(&format!("journalctl: {e}")),
             _ => {}
         }
     }
     if let Some(b) = &bar {
-        b.finish_and_clear();
+        b.finish_with_message(finished_message(no_color));
     }
 
     let mut st = match Arc::try_unwrap(state) {
@@ -547,16 +568,60 @@ fn report_file(target: &ScanTarget, result: &ScanResult, verbose: bool, no_color
     }
 }
 
-fn progress_bar(len: usize, hidden: bool) -> Option<indicatif::ProgressBar> {
-    if hidden || len < 2 || !std::io::IsTerminal::is_terminal(&std::io::stdout()) {
-        return None;
-    }
-    let bar = indicatif::ProgressBar::new(len as u64);
+/// Hayabusa's scan progress bar: elapsed time, files done / total, a green spinner and bar, the
+/// percentage, and the file being scanned on the line below. It draws only on a terminal.
+fn progress_bar(len: usize, no_color: bool) -> ProgressBar {
+    let bar =
+        ProgressBar::with_draw_target(Some(len as u64), ProgressDrawTarget::stdout_with_hz(10))
+            .with_tab_width(55);
     bar.set_style(
-        indicatif::ProgressStyle::with_template("[{elapsed_precise}] {wide_bar} {pos}/{len} files")
-            .unwrap_or_else(|_| indicatif::ProgressStyle::default_bar()),
+        indicatif::ProgressStyle::with_template(&progress_template(no_color))
+            .unwrap_or_else(|_| indicatif::ProgressStyle::default_bar())
+            .progress_chars("=> "),
     );
-    Some(bar)
+    bar.enable_steady_tick(Duration::from_millis(300));
+    bar
+}
+
+fn progress_template(no_color: bool) -> String {
+    let green = |s: &str| {
+        if no_color {
+            s.to_string()
+        } else {
+            format!("\x1b[38;2;0;255;0m{s}\x1b[0m")
+        }
+    };
+    format!(
+        "[{{elapsed_precise}}] {{human_pos}} / {{human_len}} {} [{}] {{percent}}%\n\n{{msg}}",
+        green("{spinner}"),
+        green("{bar:40}")
+    )
+}
+
+/// The file being scanned, quoted, with its size: `"/var/log/apache2/error.log" (1.2 MiB)`.
+fn progress_message(path: &Path) -> String {
+    format!(
+        "{:?} ({})",
+        path.to_string_lossy().replace('\\', "/"),
+        util::file_size_display(path)
+    )
+}
+
+fn finished_message(no_color: bool) -> String {
+    let msg = "Scanning finished. Please wait while the results are being saved.\n";
+    if no_color {
+        msg.to_string()
+    } else {
+        format!("\x1b[38;5;214m{msg}\x1b[0m")
+    }
+}
+
+/// Runs `f` with the progress bar cleared, so a message printed while scanning does not tear it.
+fn with_bar_suspended<R>(bar: &Option<ProgressBar>, f: impl FnOnce() -> R) -> R {
+    match bar {
+        Some(b) => b.suspend(f),
+        None => f(),
+    }
 }
 
 /// An absolute path for comparisons: canonical when the file exists, otherwise the canonical
@@ -695,6 +760,59 @@ fn print_rule_stats(ruleset: &RuleSet, no_color: bool) {
             no_color,
             "Rules failed to load (see the error log): ",
             &util::fmt_num(s.failed),
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn progress_template_is_hayabusas_with_a_green_spinner_and_bar() {
+        assert_eq!(
+            progress_template(true),
+            "[{elapsed_precise}] {human_pos} / {human_len} {spinner} [{bar:40}] {percent}%\n\n{msg}"
+        );
+        assert_eq!(
+            progress_template(false),
+            "[{elapsed_precise}] {human_pos} / {human_len} \x1b[38;2;0;255;0m{spinner}\x1b[0m [\x1b[38;2;0;255;0m{bar:40}\x1b[0m] {percent}%\n\n{msg}"
+        );
+        for no_color in [true, false] {
+            assert!(indicatif::ProgressStyle::with_template(&progress_template(no_color)).is_ok());
+        }
+    }
+
+    #[test]
+    fn progress_message_quotes_the_path_and_shows_its_size() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = dir.path().join("access.log");
+        std::fs::write(&log, vec![b'a'; 2048]).unwrap();
+        assert_eq!(
+            progress_message(&log),
+            format!(
+                "\"{}\" (2.0 KiB)",
+                log.display().to_string().replace('\\', "/")
+            )
+        );
+        assert_eq!(
+            progress_message(Path::new("logs\\gone.log")),
+            "\"logs/gone.log\" (-)"
+        );
+        // control characters in a file name are escaped, not sent to the terminal
+        assert_eq!(
+            progress_message(Path::new("a\x1b[2Jb")),
+            "\"a\\u{1b}[2Jb\" (-)"
+        );
+    }
+
+    #[test]
+    fn finished_message_is_orange_unless_colors_are_disabled() {
+        let plain = "Scanning finished. Please wait while the results are being saved.\n";
+        assert_eq!(finished_message(true), plain);
+        assert_eq!(
+            finished_message(false),
+            format!("\x1b[38;5;214m{plain}\x1b[0m")
         );
     }
 }

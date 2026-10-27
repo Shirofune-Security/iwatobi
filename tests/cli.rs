@@ -446,6 +446,29 @@ fn control_characters_never_reach_the_output() {
 }
 
 #[test]
+fn scanning_message_is_shown_only_when_saving_to_a_file() {
+    const SCANNING: &str = "Scanning in progress. Please wait.";
+    let (r, rows) = scan_jsonl("-f", "test_files/linux/cron", &[]);
+    assert!(!rows.is_empty());
+    assert!(r.stdout.contains(SCANNING), "{}", r.stdout);
+    // the bar itself draws only on a terminal
+    assert!(!r.stdout.contains("100%"), "{}", r.stdout);
+    let r = run(&[
+        "dfir-timeline",
+        "-f",
+        "test_files/linux/cron",
+        "-q",
+        "-K",
+        "-w",
+        "-z",
+        "UTC",
+    ]);
+    assert_eq!(r.code, 0, "{}", r.stderr);
+    assert!(r.stdout.contains("Modifying Crontab"), "{}", r.stdout);
+    assert!(!r.stdout.contains(SCANNING), "{}", r.stdout);
+}
+
+#[test]
 fn stdout_uses_the_standard_profile_and_colors_can_be_disabled() {
     let r = run(&[
         "dfir-timeline",
