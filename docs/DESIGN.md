@@ -409,5 +409,6 @@ A19. **Progress bar (0.1.0 re-release).** As in Hayabusa, the bar is shown only 
 file (`-o`), after an orange "Scanning in progress. Please wait." line: `[elapsed] done / total ⠁ [=====>   ] 37%`
 with a green spinner and 40-column bar (plain with `-K`), and the file being scanned below it as
 `"path" (size)`. It ends with "Scanning finished. Please wait while the results are being saved." (256-color 214).
-`-q` and single-file scans no longer hide it; it still draws only on a terminal. Messages printed during the
+`-q` and single-file scans no longer hide it; it still draws only on a terminal. Like Hayabusa, the
+profile in use is printed before the scan in every mode (`Output profile: standard`). Messages printed during the
 scan (`-v`, warnings) suspend the bar so they do not tear it. The journal counts as one more item.

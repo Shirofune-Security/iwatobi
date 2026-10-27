@@ -446,11 +446,16 @@ fn control_characters_never_reach_the_output() {
 }
 
 #[test]
-fn scanning_message_is_shown_only_when_saving_to_a_file() {
+fn output_profile_is_shown_and_the_scanning_message_only_when_saving_to_a_file() {
     const SCANNING: &str = "Scanning in progress. Please wait.";
     let (r, rows) = scan_jsonl("-f", "test_files/linux/cron", &[]);
     assert!(!rows.is_empty());
-    assert!(r.stdout.contains(SCANNING), "{}", r.stdout);
+    assert!(
+        r.stdout
+            .contains(&format!("Output profile: verbose\n\n{SCANNING}")),
+        "{}",
+        r.stdout
+    );
     // the bar itself draws only on a terminal
     assert!(!r.stdout.contains("100%"), "{}", r.stdout);
     let r = run(&[
@@ -465,6 +470,11 @@ fn scanning_message_is_shown_only_when_saving_to_a_file() {
     ]);
     assert_eq!(r.code, 0, "{}", r.stderr);
     assert!(r.stdout.contains("Modifying Crontab"), "{}", r.stdout);
+    assert!(
+        r.stdout.contains("Output profile: standard"),
+        "{}",
+        r.stdout
+    );
     assert!(!r.stdout.contains(SCANNING), "{}", r.stdout);
 }
 
