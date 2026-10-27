@@ -317,8 +317,10 @@ pub fn field_label(key: &str) -> String {
         "child_pid" => "ChildPID",
         "request" => "Request",
         "upstream" => "Upstream",
-        "file" => "File",
-        "line" => "Line",
+        // PHP's script location (`in /var/www/x.php on line 3`), not the log file and line,
+        // which have their own LogFile / LineNumber columns.
+        "file" => "PhpFile",
+        "line" => "PhpLine",
         other => return sanitize_control_chars(other),
     };
     label.to_string()
@@ -482,7 +484,10 @@ pub fn render_correlation(
             Placeholder::AllFieldInfo => {
                 Cell::Map(details.iter().chain(extra.iter()).cloned().collect())
             }
-            Placeholder::RawLine | Placeholder::LineNumber | Placeholder::LogFile => Cell::Null,
+            // A correlation spans several lines, often of several files: show the files, and leave
+            // the line to the member list (`file:line` in ExtraFieldInfo).
+            Placeholder::LogFile => member_files(members),
+            Placeholder::RawLine | Placeholder::LineNumber => Cell::Null,
             other => rule_cell(*other, meta, &tags).unwrap_or(Cell::Null),
         })
         .collect();
@@ -490,6 +495,21 @@ pub fn render_correlation(
         sort_key: (Some(hit.timestamp), meta.title.clone(), String::new(), 0),
         level: meta.level.clone(),
         cells,
+    }
+}
+
+/// The distinct log files of a correlation's members, in first-seen order.
+fn member_files(members: &[&BaseHit]) -> Cell {
+    let mut files: Vec<String> = Vec::new();
+    for m in members {
+        if !m.file.is_empty() && !files.iter().any(|f| f.as_str() == &*m.file) {
+            files.push(sanitize_control_chars(&m.file));
+        }
+    }
+    match files.len() {
+        0 => Cell::Null,
+        1 => Cell::Text(files.remove(0)),
+        _ => Cell::List(files),
     }
 }
 
@@ -1029,6 +1049,8 @@ mod tests {
                 "Level",
                 "Computer",
                 "LogSource",
+                "LogFile",
+                "LineNumber",
                 "Details"
             ]
         );
@@ -1290,8 +1312,8 @@ mod tests {
             ("child_pid", "ChildPID"),
             ("request", "Request"),
             ("upstream", "Upstream"),
-            ("file", "File"),
-            ("line", "Line"),
+            ("file", "PhpFile"),
+            ("line", "PhpLine"),
             ("cs-uri-stem", "cs-uri-stem"),
             ("php_message", "php_message"),
             ("error_code", "error_code"),
@@ -1321,7 +1343,7 @@ mod tests {
             Cell::Text("2026-10-24 15:35:38.000 +00:00".to_string())
         );
         assert_eq!(
-            cell_text(&row.cells[5]),
+            cell_text(&row.cells[7]),
             "SrcIP: 162.35.99.94 ¦ Method: POST ¦ URI: /?q0000000=v&q0000001=v ¦ Status: 200 ¦ Bytes: 0 ¦ Referer: - ¦ UA: -"
         );
         let json = row_json(&profile, &row, false);
@@ -1466,7 +1488,10 @@ mod tests {
         assert_eq!(cell("Computer"), Cell::Text("honeypot".to_string()));
         assert_eq!(cell("LogSource"), Cell::Text("correlation".to_string()));
         assert_eq!(cell("LineNumber"), Cell::Null);
-        assert_eq!(cell("LogFile"), Cell::Null);
+        assert_eq!(
+            cell("LogFile"),
+            Cell::Text("apache2/access.log".to_string())
+        );
         assert_eq!(
             cell("MitreTactics"),
             Cell::List(vec!["InitAccess".to_string()])
@@ -1690,7 +1715,7 @@ mod tests {
         let text = String::from_utf8(plain.into_inner()).unwrap();
         assert_eq!(
             text,
-            "Timestamp · RuleTitle · Level · Computer · LogSource · Details\n\n2026-10-26 09:00:01.000 +00:00 · Suspicious SSH Error · critical · webserver01 · linux/sshd · Proc: sshd ¦ PID: 2001 ¦ Msg: Invalid user admin from 198.51.100.23 port 40022\n\n"
+            "Timestamp · RuleTitle · Level · Computer · LogSource · LogFile · LineNumber · Details\n\n2026-10-26 09:00:01.000 +00:00 · Suspicious SSH Error · critical · webserver01 · linux/sshd · test_files/linux/auth.log · 1 · Proc: sshd ¦ PID: 2001 ¦ Msg: Invalid user admin from 198.51.100.23 port 40022\n\n"
         );
         let mut colored = Buffer::ansi();
         render_stdout(&mut colored, &profile, &row, false, false).unwrap();

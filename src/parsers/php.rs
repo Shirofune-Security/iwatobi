@@ -333,23 +333,23 @@ impl LineParser for PhpErrorParser {
                 ev.timestamp_inferred = self.last_ts.is_some();
             }
         }
-        match detect_php_message(msg) {
-            Some(php) => {
-                ev.push("php_type", php.php_type);
-                ev.push("message", php.text);
-                ev.push("file", php.file);
-                ev.push("line", php.line);
-            }
+        // `file`/`line` are the PHP script location PHP reports at the end of the message
+        // (`in /var/www/x.php on line 3`, `in Unknown on line 0` before any script ran). They
+        // repeat the end of `message` and are easily mistaken for the log location, so they are
+        // extra fields rather than details.
+        let (php_type, message, file, line) = match detect_php_message(msg) {
+            Some(php) => (FieldValue::from(php.php_type), php.text, php.file, php.line),
             None => {
                 // A user `error_log()` line (or a php-fpm line inside a PHP error log).
                 let (file, line) = split_location(msg);
-                ev.push("php_type", FieldValue::Null);
-                ev.push("message", msg);
-                ev.push("file", file);
-                ev.push("line", line);
+                (FieldValue::Null, msg.to_string(), file, line)
             }
-        }
+        };
+        ev.push("php_type", php_type);
+        ev.push("message", message);
         ev.end_details();
+        ev.push("file", file);
+        ev.push("line", line);
         ev.push("zone", zone);
         // php-fpm's master log sharing the file (`[date] NOTICE: [pool www] child 1 started`):
         // the line is an fpm event too, with the fpm fields as extra fields.
@@ -820,7 +820,7 @@ mod tests {
             keys(&ev),
             vec!["php_type", "message", "file", "line", "zone"]
         );
-        assert_eq!(ev.details().len(), 4);
+        assert_eq!(ev.details().len(), 2);
         assert_eq!(ev.field_str("php_type"), Some("Fatal error"));
         assert_eq!(
             ev.field_str("message"),
@@ -1066,7 +1066,7 @@ mod tests {
             ev.field_str("message"),
             Some("NOTICE: fpm is running, pid 1")
         );
-        assert_eq!(ev.details().len(), 4);
+        assert_eq!(ev.details().len(), 2);
         assert_eq!(
             keys(&ev),
             vec![

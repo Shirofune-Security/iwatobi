@@ -414,7 +414,18 @@ pub fn spawn_journalctl(exe: &Path, since: Option<&str>) -> std::io::Result<Chil
     cmd.stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    cmd.spawn()
+    // ETXTBSY: the executable was just written (a package upgrade, or a test's fake journalctl
+    // whose write handle a concurrently forked child still holds), so retry briefly.
+    let mut attempts = 0;
+    loop {
+        match cmd.spawn() {
+            Err(e) if e.kind() == ErrorKind::ExecutableFileBusy && attempts < 20 => {
+                attempts += 1;
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            res => return res,
+        }
+    }
 }
 
 /// Whether live analysis runs with the effective uid 0 (always false off Unix).

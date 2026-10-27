@@ -13,8 +13,8 @@
 #   %ExtraFieldInfo%   every other parsed field
 #   %AllFieldInfo%     every parsed field
 #   %RawLine%          the original log line
-#   %LineNumber%       line number inside the log file
-#   %LogFile%          path of the log file
+#   %LineNumber%       line number inside the log file (- for correlations)
+#   %LogFile%          path of the log file (for correlations: the files of the member events)
 #   %MitreTactics%     MITRE ATT&CK tactics (abbreviated with config/mitre_tactics.txt)
 #   %MitreTags%        MITRE ATT&CK technique, software and group IDs
 #   %OtherTags%        every other tag (ex: cve.2026-109618)
@@ -35,13 +35,15 @@ minimal:
     Level: "%Level%"
     Details: "%Details%"
 
-# Default for the terminal.
+# Default for the terminal: the alert, where it was logged (log file and line) and its details.
 standard:
     Timestamp: "%Timestamp%"
     RuleTitle: "%RuleTitle%"
     Level: "%Level%"
     Computer: "%Computer%"
     LogSource: "%LogSource%"
+    LogFile: "%LogFile%"
+    LineNumber: "%LineNumber%"
     Details: "%Details%"
 
 # Default for files saved with -o: standard plus MITRE ATT&CK tags, all parsed fields,
