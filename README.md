@@ -1,12 +1,5 @@
 <div align="center">
- <pre>
-┏━━┳┓┏┓┏┳━━━┳━━━━┳━━━┳━━┓┏━━┓
-┗┓┏┫┃┃┃┃┃┏━┓┃┏┓┏┓┃┏━┓┃┏┓┃┗┓┏┛
- ┃┃┃┃┃┃┃┃┃ ┃┣┛┃┃┗┫┃ ┃┃┗┛┗┓┃┃
- ┃┃┃┗┛┗┛┃┗━┛┃ ┃┃ ┃┃ ┃┃┏━┓┃┃┃
-┏┛┗╋┓┏┓┏┫┏━┓┃ ┃┃ ┃┗━┛┃┗━┛┣┛┗┓
-┗━━┛┗┛┗┛┗┛ ┗┛ ┗┛ ┗━━━┻━━━┻━━┛
- </pre>
+ <img src="art/logo.png" alt="Iwatobi Linux DFIR logo" width="640"/>
  <p>
    <b>Iwatobi (イワトビ) is a Sigma-based threat hunting and fast forensics timeline generator for Linux logs.</b><br/>
    Created by <a href="https://github.com/Yamato-Security">Yamato Security</a> and written in
