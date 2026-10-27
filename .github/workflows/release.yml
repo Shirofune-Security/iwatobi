@@ -1,0 +1,161 @@
+name: Iwatobi Release Automation
+
+# Builds the release packages for every platform. Run it from the Actions tab (or
+# `gh workflow run release.yml -f release_ver=0.1.0 -f branch_or_tag=main`), then attach the
+# zips from the `all-packages` artifact to the GitHub release.
+#
+# Each package holds the iwatobi binary (renamed with the version and platform) plus the
+# `rules/`, `config/` and `art/` folders, the license and the README. Unlike Suzaku, the
+# rules live in this repository, so no second checkout is needed.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_ver:
+        required: true
+        default: "0.0.x"
+        description: "Version of the release"
+      branch_or_tag:
+        required: true
+        default: "main"
+        description: "Branch or Tag to checkout"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  upload:
+    runs-on: ${{ matrix.info.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        info:
+          - { os: "windows-latest", target: "x86_64-pc-windows-msvc", name: "win-x64" }
+          - { os: "windows-latest", target: "i686-pc-windows-msvc", name: "win-x86" }
+          - { os: "windows-latest", target: "aarch64-pc-windows-msvc", name: "win-aarch64" }
+          - { os: "ubuntu-latest", target: "x86_64-unknown-linux-gnu", name: "lin-x64-gnu" }
+          - { os: "ubuntu-latest", target: "x86_64-unknown-linux-musl", name: "lin-x64-musl" }
+          - { os: "ubuntu-latest", target: "aarch64-unknown-linux-gnu", name: "lin-aarch64-gnu" }
+          - { os: "ubuntu-latest", target: "aarch64-unknown-linux-musl", name: "lin-aarch64-musl" }
+          - { os: "macos-latest", target: "aarch64-apple-darwin", name: "mac-aarch64" }
+          - { os: "macos-latest", target: "x86_64-apple-darwin", name: "mac-x64" }
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.inputs.branch_or_tag }}
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: ${{ matrix.info.target }}
+
+      # Iwatobi has no C dependencies, so the musl builds need only the musl linker wrapper and the
+      # aarch64 builds only a cross linker (Suzaku needs `cross` for its bundled DuckDB C++ code).
+      - name: Install musl tools
+        if: contains(matrix.info.target, 'linux-musl')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+
+      - name: Install the aarch64 cross linker
+        if: startsWith(matrix.info.target, 'aarch64-unknown-linux')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
+
+      - name: Build Iwatobi binary
+        run: cargo build --release --locked --target ${{ matrix.info.target }}
+
+      - name: Package - Windows
+        if: contains(matrix.info.os, 'windows') == true
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release-binaries | Out-Null
+          Copy-Item -Path ./target/${{ matrix.info.target }}/release/iwatobi.exe -Destination release-binaries/iwatobi-${{ github.event.inputs.release_ver }}-${{ matrix.info.name }}.exe
+          Copy-Item -Recurse -Path ./config -Destination release-binaries/config
+          Copy-Item -Recurse -Path ./art -Destination release-binaries/art
+          Copy-Item -Recurse -Path ./rules -Destination release-binaries/rules
+          Copy-Item -Path ./LICENSE, ./README.md -Destination release-binaries/
+
+      - name: Package - Unix
+        if: contains(matrix.info.os, 'windows') == false
+        run: |
+          mkdir -p release-binaries
+          cp ./target/${{ matrix.info.target }}/release/iwatobi release-binaries/iwatobi-${{ github.event.inputs.release_ver }}-${{ matrix.info.name }}
+          cp -r ./config release-binaries/config
+          cp -r ./art release-binaries/art
+          cp -r ./rules release-binaries/rules
+          cp ./LICENSE ./README.md release-binaries/
+
+      # A package for another architecture cannot be run here; for the native ones, check that the
+      # packaged binary starts and finds the packaged rules from outside the repository.
+      - name: Smoke test the package
+        if: matrix.info.target == 'x86_64-unknown-linux-gnu' || matrix.info.target == 'x86_64-unknown-linux-musl' || matrix.info.target == 'x86_64-pc-windows-msvc' || matrix.info.target == 'aarch64-apple-darwin'
+        shell: bash
+        run: |
+          bin=$(ls release-binaries/iwatobi-* | head -1)
+          cp -r test_files/linux "$RUNNER_TEMP/logs"
+          cd "$RUNNER_TEMP"
+          "$GITHUB_WORKSPACE/$bin" --version
+          "$GITHUB_WORKSPACE/$bin" dfir-timeline -d logs -q -K -w -Q -N -z UTC | tee out.txt
+          grep -q "Total detection rules: 16" out.txt
+          grep -q "Modifying Crontab" out.txt
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: iwatobi-${{ github.event.inputs.release_ver }}-${{ matrix.info.name }}
+          path: release-binaries/*
+          include-hidden-files: true
+
+  upload-all-platforms:
+    needs: upload
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download All Artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: all-packages
+          pattern: iwatobi-*
+          merge-multiple: true
+
+      - name: Upload Artifacts(all-platforms)
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: iwatobi-${{ github.event.inputs.release_ver }}-all-platforms
+          path: all-packages/*
+          include-hidden-files: true
+
+  all-packages-zip:
+    needs: upload-all-platforms
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: all-packages
+          pattern: iwatobi-*
+      - name: Zip each package
+        run: |
+          ls -lR all-packages
+          cd all-packages
+          for dir in */; do
+            cd "$dir"
+            # Restore the execute bit that artifact upload/download drops.
+            chmod +x iwatobi-* 2>/dev/null || true
+            zip -r "../${dir%/}.zip" .
+            cd ..
+          done
+      - name: Upload Zip Artifacts(all-packages)
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: all-packages
+          path: all-packages/*.zip
