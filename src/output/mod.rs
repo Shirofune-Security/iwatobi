@@ -108,28 +108,6 @@ impl Placeholder {
             _ => return None,
         })
     }
-
-    /// Whether the column is filled from the rule metadata alone (the same for a detection and
-    /// for a correlation).
-    fn is_rule_metadata(self) -> bool {
-        matches!(
-            self,
-            Placeholder::RuleTitle
-                | Placeholder::Level
-                | Placeholder::MitreTactics
-                | Placeholder::MitreTags
-                | Placeholder::OtherTags
-                | Placeholder::RuleFile
-                | Placeholder::RuleID
-                | Placeholder::RuleAuthor
-                | Placeholder::RuleCreationDate
-                | Placeholder::RuleModifiedDate
-                | Placeholder::Status
-                | Placeholder::Description
-                | Placeholder::References
-                | Placeholder::FalsePositives
-        )
-    }
 }
 
 /// An output profile: ordered columns.
@@ -833,6 +811,7 @@ impl Writers {
     }
 
     /// The profile rows must be rendered with.
+    #[cfg(test)]
     pub fn profile(&self) -> &Profile {
         &self.profile
     }

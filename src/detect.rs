@@ -41,7 +41,6 @@ pub struct ScanOptions {
     pub tz: TzAssumption,
     pub hostname_hint: Option<String>,
     pub time_filter: TimeFilter,
-    pub verbose: bool,
 }
 
 /// What scanning one target produced.

@@ -189,10 +189,12 @@ impl ParsedEvent {
         self.primary_logsource = tag.display();
     }
 
+    #[cfg(test)]
     pub fn field(&self, key: &str) -> Option<&FieldValue> {
         self.fields.iter().find(|(k, _)| k == key).map(|(_, v)| v)
     }
 
+    #[cfg(test)]
     pub fn field_str(&self, key: &str) -> Option<&str> {
         self.field(key).and_then(FieldValue::as_str)
     }

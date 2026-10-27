@@ -1,8 +1,5 @@
 //! Iwatobi: native Sigma scanner and DFIR timeline generator for Linux logs.
 
-// TODO(skeleton): remove once every module is implemented; the stubs leave fields unused.
-#![allow(dead_code)]
-
 mod app;
 mod cli;
 mod color;

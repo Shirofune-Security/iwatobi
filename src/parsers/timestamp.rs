@@ -252,11 +252,6 @@ pub fn parse_epoch(value: f64) -> Option<DateTime<Utc>> {
     DateTime::from_timestamp(secs, nanos.min(999_999_999))
 }
 
-/// Convenience: `DateTime<FixedOffset>` → UTC.
-pub fn to_utc(dt: &DateTime<FixedOffset>) -> DateTime<Utc> {
-    dt.with_timezone(&Utc)
-}
-
 /// Build a naive date-time from parts, `None` when they do not form a valid date.
 pub fn naive_from_parts(
     year: i32,

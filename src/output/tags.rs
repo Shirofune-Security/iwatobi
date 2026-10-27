@@ -30,6 +30,7 @@ pub struct SplitTags {
 }
 
 impl SplitTags {
+    #[cfg(test)]
     pub fn is_empty(&self) -> bool {
         self.tactics.is_empty() && self.mitre.is_empty() && self.other.is_empty()
     }
@@ -70,10 +71,12 @@ impl TacticTable {
         Self { map }
     }
 
+    #[cfg(test)]
     pub fn len(&self) -> usize {
         self.map.len()
     }
 
+    #[cfg(test)]
     pub fn is_empty(&self) -> bool {
         self.map.is_empty()
     }
@@ -119,6 +122,7 @@ fn push_unique(list: &mut Vec<String>, value: &str) {
 }
 
 /// Split rule tags using the tactic table (`tag_full_str,tag_output_str` CSV).
+#[cfg(test)]
 pub fn split_tags(tags: &[String], tactic_table: &str) -> SplitTags {
     TacticTable::parse(tactic_table).split(tags)
 }

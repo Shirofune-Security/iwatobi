@@ -279,7 +279,6 @@ pub fn run(opts: &TimelineOptions) -> i32 {
         tz,
         hostname_hint,
         time_filter,
-        verbose: opts.general.verbose,
     };
     let state = Arc::new(Mutex::new(ScanState {
         writers,
@@ -308,6 +307,17 @@ pub fn run(opts: &TimelineOptions) -> i32 {
             extra_tags: Vec::new(),
             format: Some(LogFormat::Syslog),
         };
+        // Drain stderr on its own thread: a journalctl that writes more than the pipe buffer
+        // would otherwise block, and the "not seeing messages" hint is how a partial (non-root)
+        // read of the journal shows up.
+        let stderr_reader = child.stderr.take().map(|stderr| {
+            std::thread::spawn(move || {
+                std::io::BufReader::new(stderr)
+                    .lines()
+                    .map_while(Result::ok)
+                    .collect::<Vec<String>>()
+            })
+        });
         if let Some(stdout) = child.stdout.take() {
             let mut ctx = ParseContext::new(Path::new("."), tz);
             ctx.display_name = "journalctl".to_string();
@@ -330,6 +340,21 @@ pub fn run(opts: &TimelineOptions) -> i32 {
             report_file(&target, &result, verbose, no_color);
             let mut st = state.lock().unwrap_or_else(|e| e.into_inner());
             consume_result(&mut st, result, ruleset_ref, profile_ref, opts_ref);
+        }
+        let stderr_lines = stderr_reader
+            .and_then(|t| t.join().ok())
+            .unwrap_or_default();
+        let mut partial = false;
+        for line in &stderr_lines {
+            log_warn(&format!("journalctl: {line}"));
+            if line.contains("not seeing messages") || line.contains("insufficient permissions") {
+                partial = true;
+            }
+        }
+        if partial {
+            let msg = "journalctl could not read the system journal completely (run as root or as a member of systemd-journal); results may be incomplete";
+            log_warn(msg);
+            warn_msg(no_color, msg);
         }
         match child.wait() {
             Ok(status) if !status.success() => {

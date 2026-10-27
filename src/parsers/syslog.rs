@@ -1154,7 +1154,17 @@ mod tests {
                 ["process", "pid", "message"],
                 "line {n}"
             );
-            assert!(ev.extra().is_empty(), "line {n}: no PRI, no extra fields");
+            // The php[14100] line carries the PHP message fields (php_type, php_message, file,
+            // line) that the PHP detector adds; every other line has no PRI and no extra fields.
+            if ev.tags.contains(&LogSourceTag::PHP_ERROR_LOG) {
+                assert_eq!(
+                    keys(ev.extra()),
+                    ["php_type", "php_message", "file", "line"],
+                    "line {n}: PHP fields"
+                );
+            } else {
+                assert!(ev.extra().is_empty(), "line {n}: no PRI, no extra fields");
+            }
             assert_eq!(ev.tags[0], SYSLOG, "line {n}: first tag is syslog");
         }
     }
