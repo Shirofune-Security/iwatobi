@@ -1,6 +1,9 @@
 <div align="center">
  <img src="art/logo.png" alt="Iwatobi Linux DFIR logo" width="640"/>
  <p>
+  [<b>English</b>] | [<a href="README-Japanese.md">日本語</a>]
+ </p>
+ <p>
    <b>Iwatobi (イワトビ) is a Sigma-based threat hunting and fast forensics timeline generator for Linux logs.</b><br/>
    Created by <a href="https://github.com/Yamato-Security">Yamato Security</a> and written in
    <a href="https://www.rust-lang.org/">Rust</a> — imagine
@@ -56,7 +59,7 @@ honeypot evidence of confirmed remote code execution.
 
 Download the package for your platform from the
 [Releases](https://github.com/Yamato-Security/iwatobi/releases) page. Each zip holds the binary, the
-`rules/`, `config/` and `art/` folders, the license and this README:
+`rules/`, `config/` and `art/` folders, the license and the English and Japanese READMEs:
 
 | Package | Platform |
 | --- | --- |
