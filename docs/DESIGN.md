@@ -3,7 +3,7 @@
 Iwatobi (イワトビ, rockhopper penguin) is Yamato Security's native Sigma scanner for Linux text
 logs: the Hayabusa/Suzaku sibling for syslog-family logs, web server access/error logs and PHP
 logs. Rust binary, AGPL-3.0, repo https://github.com/Yamato-Security/iwatobi (private, currently
-only LICENSE + README). Version `0.1.0`, release name "Rockhopper Release".
+only LICENSE + README). Version `0.1.0`, release name "Vulnpocalypse Release".
 
 Explicitly OUT of scope for 0.1.0: auditd, sysmon-for-linux, journald binary files (we only read
 `journalctl` text export), `category: proxy` rules, Windows/macOS logs, DuckDB output, GeoIP.
@@ -50,7 +50,7 @@ Time format: `-U, --utc` (default: local time with offset, Hayabusa style `2026-
 
 Display: `-K, --no-color`, `-q, --quiet` (no banner).
 
-Startup banner (unless -q): `art/logo.txt` printed in bright green RGB(0,255,0) exactly like Suzaku's `display_logo`, then `Start time:` and `Version: 0.1.0 (Rockhopper Release)`. Assets (`art/*`, `config/*`) are embedded with `include_str!` so the binary works from any cwd; if `./config/<file>` exists next to the executable or in the cwd it overrides the embedded copy.
+Startup banner (unless -q): `art/logo.txt` printed in bright green RGB(0,255,0) exactly like Suzaku's `display_logo`, then `Start time:` and `Version: 0.1.0 (Vulnpocalypse Release)`. Assets (`art/*`, `config/*`) are embedded with `include_str!` so the binary works from any cwd; if `./config/<file>` exists next to the executable or in the cwd it overrides the embedded copy.
 
 ## 2. Pipeline
 
@@ -344,7 +344,7 @@ Every shipped rule has at least one fixture line that fires it, and integration 
 - Release profile: `lto = "fat"`, `codegen-units = 1`, `strip = true`? (Hayabusa uses lto/codegen-units; keep `strip = "debuginfo"`).
 
 ## 14. Docs
-README.md in Suzaku's style (logo, about, features, download/build, `dfir-timeline` usage incl. live analysis, output profiles, rules layout + keyword normalization note, PHP2Shell rule set, contributing, license), CHANGELOG.md (`## 0.1.0 [Unreleased] "Rockhopper Release"`), rules/README.md, test_files/php2shell/README.md (attribution), docs/ARCHITECTURE.md (this document, trimmed).
+README.md in Suzaku's style (logo, about, features, download/build, `dfir-timeline` usage incl. live analysis, output profiles, rules layout + keyword normalization note, PHP2Shell rule set, contributing, license), CHANGELOG.md (`## 0.1.0 [Unreleased] "Vulnpocalypse Release"`), rules/README.md, test_files/php2shell/README.md (attribution), docs/ARCHITECTURE.md (this document, trimmed).
 
 ## 15. Amendments after the adversarial design review (binding; they override the sections above)
 
