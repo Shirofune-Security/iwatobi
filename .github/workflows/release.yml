@@ -5,7 +5,7 @@ name: Iwatobi Release Automation
 # zips from the `all-packages` artifact to the GitHub release.
 #
 # Each package holds the iwatobi binary (renamed with the version and platform) plus the
-# `rules/`, `config/` and `art/` folders, the license and the README. Unlike Suzaku, the
+# `rules/`, `config/` and `art/` folders, the license and the English and Japanese READMEs. Unlike Suzaku, the
 # rules live in this repository, so no second checkout is needed.
 
 on:
@@ -83,7 +83,7 @@ jobs:
           Copy-Item -Recurse -Path ./config -Destination release-binaries/config
           Copy-Item -Recurse -Path ./art -Destination release-binaries/art
           Copy-Item -Recurse -Path ./rules -Destination release-binaries/rules
-          Copy-Item -Path ./LICENSE, ./README.md -Destination release-binaries/
+          Copy-Item -Path ./LICENSE, ./README.md, ./README-Japanese.md -Destination release-binaries/
 
       - name: Package - Unix
         if: contains(matrix.info.os, 'windows') == false
@@ -93,7 +93,7 @@ jobs:
           cp -r ./config release-binaries/config
           cp -r ./art release-binaries/art
           cp -r ./rules release-binaries/rules
-          cp ./LICENSE ./README.md release-binaries/
+          cp ./LICENSE ./README.md ./README-Japanese.md release-binaries/
 
       # A package for another architecture cannot be run here; for the native ones, check that the
       # packaged binary starts and finds the packaged rules from outside the repository.
