@@ -36,6 +36,7 @@ use chrono::{DateTime, Utc};
 use sigma_rust::Event;
 use sigma_rust::correlation::{CorrelationCondition, CorrelationType, FieldAliases};
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::sync::Arc;
 
 /// One base-rule match collected during the scan.
 #[derive(Clone, Debug)]
@@ -50,6 +51,9 @@ pub struct BaseHit {
     pub hostname: Option<String>,
     /// `RuleTitle (file:line)` for the correlation's Details column.
     pub summary: String,
+    /// Where the event was read, for a stable order of hits that share a timestamp.
+    pub file: Arc<str>,
+    pub line: usize,
 }
 
 /// A fired correlation.
@@ -92,16 +96,20 @@ pub fn make_base_hit(
     summary: String,
 ) -> BaseHit {
     let section = &corr.spec.correlation;
-    let base_name = corr
+    let identifiers: &[String] = corr
         .base_rules
         .get(base_index)
-        .map(|b| b.name.as_str())
-        .unwrap_or("");
+        .map(|b| b.identifiers.as_slice())
+        .unwrap_or(&[]);
     let aliases = section.aliases.as_ref();
+    // A present-but-null value (CLF `-`, a JSON key without a value) is no value: it must not
+    // merge unrelated clients into one group or count as a distinct value. sigma-rust renders
+    // null as the empty string, which is never a meaningful group or value either.
     let lookup = |field: &str| -> Option<String> {
         event
-            .get(resolve_field(field, aliases, base_name))
+            .get(resolve_field(field, aliases, identifiers))
             .map(|v| v.value_to_string())
+            .filter(|s| !s.is_empty())
     };
     let group_values = section
         .group_by
@@ -123,6 +131,8 @@ pub fn make_base_hit(
         value_field,
         hostname: parsed.hostname.clone(),
         summary,
+        file: Arc::from(""),
+        line: 0,
     }
 }
 
@@ -163,8 +173,18 @@ fn evaluate_with(
             }
         }
         for (key, mut members) in groups {
-            // Stable: hits with equal timestamp and base rule keep their arrival order.
-            members.sort_by_key(|&i| (hits[i].timestamp, hits[i].base_index));
+            // Hits that share a timestamp keep the order they were logged in (file, then line),
+            // so `temporal_ordered` judges same-second events by their log order; the base rule
+            // index only breaks ties between rules that matched the same event.
+            members.sort_by(|&a, &b| {
+                let (x, y) = (&hits[a], &hits[b]);
+                (x.timestamp, &x.file, x.line, x.base_index).cmp(&(
+                    y.timestamp,
+                    &y.file,
+                    y.line,
+                    y.base_index,
+                ))
+            });
             if plan.fixed_buckets {
                 fixed_buckets(ci, &plan, key, &members, hits, &mut outcome.hits);
             } else {
@@ -177,16 +197,17 @@ fn evaluate_with(
     outcome
 }
 
-/// The field that carries `field` for the base rule `base_name` (`aliases: {alias: {rule: field}}`),
-/// or `field` itself when no alias applies.
+/// The field that carries `field` for a base rule (`aliases: {alias: {rule: field}}`), or `field`
+/// itself when no alias applies. The alias may key the rule by any identifier it can be
+/// referenced by (the `rules:` entry, `name`, `id` or `title`).
 fn resolve_field<'a>(
     field: &'a str,
     aliases: Option<&'a FieldAliases>,
-    base_name: &str,
+    identifiers: &[String],
 ) -> &'a str {
     aliases
         .and_then(|a| a.aliases.get(field))
-        .and_then(|per_rule| per_rule.get(base_name))
+        .and_then(|per_rule| identifiers.iter().find_map(|id| per_rule.get(id)))
         .map(String::as_str)
         .unwrap_or(field)
 }
@@ -197,7 +218,11 @@ struct Plan {
     span_secs: i64,
     /// The threshold (synthesized as `gte: 1` when the rule has none).
     condition: CorrelationCondition,
-    /// `lt`/`lte` thresholds are evaluated on fixed buckets (see the module docs).
+    /// `neq`, which sigma-rust's `CorrelationCondition` does not carry (see `CorrelationRule`).
+    neq: Option<u64>,
+    /// `lt`/`lte`/`eq`/`neq` thresholds are evaluated on fixed buckets (see the module docs): a
+    /// sliding window can always be shrunk or grown, so "exactly n" or "fewer than n" events in
+    /// some window says nothing.
     fixed_buckets: bool,
     /// Base-rule indices every window of a temporal correlation must contain, in `rules:` order.
     required: Vec<usize>,
@@ -223,7 +248,8 @@ impl Plan {
             CorrelationType::EventCount | CorrelationType::ValueCount
         );
         let mut condition = section.condition.clone().unwrap_or_default();
-        if counting && !has_threshold(&condition) {
+        let neq = corr.condition_neq;
+        if counting && !has_threshold(&condition) && neq.is_none() {
             warn(format!(
                 "{label}: the {} correlation has no condition; it is evaluated as 'gte: 1'",
                 type_name(&kind)
@@ -236,7 +262,11 @@ impl Plan {
             ));
             return None;
         }
-        let fixed_buckets = counting && (condition.lt.is_some() || condition.lte.is_some());
+        let fixed_buckets = counting
+            && (condition.lt.is_some()
+                || condition.lte.is_some()
+                || condition.eq.is_some()
+                || neq.is_some());
         let mut required: Vec<usize> = Vec::new();
         for &r in &corr.rule_order {
             if !required.contains(&r) {
@@ -257,6 +287,7 @@ impl Plan {
             kind,
             span_secs,
             condition,
+            neq,
             fixed_buckets,
             required,
         })
@@ -279,7 +310,7 @@ fn type_name(kind: &CorrelationType) -> &'static str {
 /// `timespan` in seconds. Same grammar as sigma-rust's `CorrelationEngine::parse_timespan`
 /// (an integer followed by `s`, `m`, `h` or `d`), but with checked arithmetic: an absurd value
 /// such as `99999999999999999999d` is rejected instead of overflowing.
-fn timespan_seconds(text: &str) -> Option<i64> {
+pub fn timespan_seconds(text: &str) -> Option<i64> {
     let text = text.trim();
     let unit_at = text.find(|c: char| c.is_alphabetic())?;
     let (value, unit) = text.split_at(unit_at);
@@ -368,9 +399,10 @@ fn fixed_buckets(
             CorrelationType::ValueCount => distinct_values(members, hits),
             _ => members.len(),
         };
-        if plan.condition.matches(count as u64)
-            && let Some(hit) = make_hit(ci, key, members, hits)
-        {
+        let count = count as u64;
+        let threshold_ok = (!has_threshold(&plan.condition) || plan.condition.matches(count))
+            && plan.neq.is_none_or(|n| count != n);
+        if threshold_ok && let Some(hit) = make_hit(ci, key, members, hits) {
             out.push(hit);
         }
         start = end;
@@ -620,13 +652,19 @@ level: informational
                     .or_else(|| text("title"))
                     .expect("base rule name");
                 let rule = sigma_rust::rule_from_yaml(yaml).expect("base rule");
+                let mut identifiers = vec![name.clone()];
+                for id in [text("id"), text("title")].into_iter().flatten() {
+                    if !identifiers.contains(&id) {
+                        identifiers.push(id);
+                    }
+                }
                 BaseRule {
                     meta: RuleMeta {
                         title: text("title").unwrap_or_else(|| name.clone()),
                         ..Default::default()
                     },
                     logsource: LogSourceSpec::from_rule(&rule),
-                    name,
+                    identifiers,
                     rule,
                 }
             })
@@ -638,9 +676,7 @@ level: informational
             .map(|r| {
                 base_rules
                     .iter()
-                    .position(|b| {
-                        b.name == *r || b.meta.id.as_deref() == Some(r) || b.meta.title == *r
-                    })
+                    .position(|b| b.identifiers.contains(r))
                     .expect("rules: entry resolves")
             })
             .collect();
@@ -651,10 +687,21 @@ level: informational
                 rule_file: "test.yml".to_string(),
                 ..Default::default()
             },
+            condition_neq: value_neq(corr_yaml),
             spec,
             base_rules,
             rule_order,
         }
+    }
+
+    /// `correlation.condition.neq` of a test correlation, read like the rule loader does.
+    fn value_neq(corr_yaml: &str) -> Option<u64> {
+        let value: yaml_serde::Value = yaml_serde::from_str(corr_yaml).ok()?;
+        value
+            .get("correlation")?
+            .get("condition")?
+            .get("neq")?
+            .as_u64()
     }
 
     fn parsed(fields: &[(&str, FieldValue)], host: Option<&str>) -> ParsedEvent {
@@ -782,7 +829,7 @@ correlation:
     }
 
     #[test]
-    fn make_base_hit_marks_missing_group_by_field_and_renders_null_as_empty() {
+    fn make_base_hit_treats_missing_and_null_group_by_fields_alike() {
         let corr = correlation(RAPID_POSTS, &[BASE_POST]);
         let missing = hit(
             &corr,
@@ -803,7 +850,9 @@ correlation:
             &[("c-ip", FieldValue::Null)],
             None,
         );
-        assert_eq!(null.group_values, Some(vec![String::new()]));
+        // A null value (CLF `-`) is no value: the hit is dropped like one without the field,
+        // instead of merging every client without an address into one group.
+        assert_eq!(null.group_values, None);
         // No group-by at all: every hit lands in the single empty group.
         let chain = correlation(PHP2SHELL_TEMPORAL, PHP2SHELL_BASES);
         assert_eq!(
@@ -1144,7 +1193,7 @@ correlation:
     }
 
     #[test]
-    fn eq_and_gt_conditions_use_the_sliding_window() {
+    fn eq_uses_fixed_buckets_and_gt_the_sliding_window() {
         let eq = correlation(
             "title: eq\ncorrelation:\n  type: event_count\n  rules: [post_to_php_index]\n  group-by: [c-ip]\n  timespan: 60s\n  condition:\n    eq: 2\n",
             &[BASE_POST],
@@ -1154,10 +1203,18 @@ correlation:
             post_hit(&eq, "2026-10-24T15:35:33Z", "203.0.113.5"),
             post_hit(&eq, "2026-10-24T15:35:35Z", "203.0.113.5"),
         ];
-        let (outcome, _) = run(&[eq], &hits);
-        // The window at hit 0 holds 3 (not equal); the window at hit 1 holds exactly 2.
+        let (outcome, _) = run(std::slice::from_ref(&eq), &hits);
+        // A sliding window can always be shrunk to "exactly 2", so `eq` is judged on the fixed
+        // 60 s bucket, which holds 3 hits: no report.
+        assert!(outcome.hits.is_empty());
+        let two = vec![
+            post_hit(&eq, "2026-10-24T15:35:31Z", "203.0.113.5"),
+            post_hit(&eq, "2026-10-24T15:35:33Z", "203.0.113.5"),
+            post_hit(&eq, "2026-10-24T15:36:05Z", "203.0.113.5"),
+        ];
+        let (outcome, _) = run(&[eq], &two);
         assert_eq!(outcome.hits.len(), 1);
-        assert_eq!(outcome.hits[0].members, vec![1, 2]);
+        assert_eq!(outcome.hits[0].members, vec![0, 1]);
 
         let gt = correlation(
             "title: gt\ncorrelation:\n  type: event_count\n  rules: [post_to_php_index]\n  group-by: [c-ip]\n  timespan: 60s\n  condition:\n    gt: 2\n",
@@ -1554,5 +1611,90 @@ correlation:
         ];
         let (outcome, _) = run(&[corr], &all);
         assert_eq!(outcome.hits.len(), 1);
+    }
+
+    #[test]
+    fn neq_is_evaluated_on_fixed_buckets() {
+        let neq = correlation(
+            "title: neq\ncorrelation:\n  type: event_count\n  rules: [post_to_php_index]\n  group-by: [c-ip]\n  timespan: 60s\n  condition:\n    neq: 1\n",
+            &[BASE_POST],
+        );
+        assert_eq!(neq.condition_neq, Some(1));
+        let hits = vec![
+            post_hit(&neq, "2026-10-24T15:35:31Z", "203.0.113.5"),
+            post_hit(&neq, "2026-10-24T15:35:31Z", "203.0.113.6"),
+            post_hit(&neq, "2026-10-24T15:35:33Z", "203.0.113.6"),
+        ];
+        let (outcome, warnings) = run(&[neq], &hits);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        // .5 has one hit (excluded by neq: 1), .6 has two.
+        assert_eq!(outcome.hits.len(), 1);
+        assert_eq!(
+            outcome.hits[0].group_values,
+            vec!["203.0.113.6".to_string()]
+        );
+    }
+
+    #[test]
+    fn aliases_may_key_the_base_rule_by_id() {
+        let corr = correlation(
+            "title: by id\ncorrelation:\n  type: event_count\n  rules: [base-post-id]\n  group-by: [client]\n  timespan: 60s\n  aliases:\n    client:\n      base-post-id: c-ip\n  condition:\n    gte: 2\n",
+            &[
+                "title: Base\nname: base_post\nid: base-post-id\nlogsource: {category: webserver}\ndetection:\n  sel:\n    cs-method: POST\n  condition: sel\n",
+            ],
+        );
+        let hits = vec![
+            post_hit(&corr, "2026-10-24T15:35:31Z", "203.0.113.5"),
+            post_hit(&corr, "2026-10-24T15:35:32Z", "203.0.113.5"),
+        ];
+        let (outcome, _) = run(&[corr], &hits);
+        assert_eq!(outcome.skipped_missing_group_by, 0);
+        assert_eq!(outcome.hits.len(), 1);
+        assert_eq!(
+            outcome.hits[0].group_values,
+            vec!["203.0.113.5".to_string()]
+        );
+    }
+
+    #[test]
+    fn same_second_hits_keep_their_log_order_for_temporal_ordered() {
+        let bases = [
+            "title: Get\nname: get\nlogsource: {category: webserver}\ndetection:\n  sel:\n    cs-method: GET\n  condition: sel\n",
+            "title: Post\nname: post\nlogsource: {category: webserver}\ndetection:\n  sel:\n    cs-method: POST\n  condition: sel\n",
+        ];
+        let ordered = |rules: &str| {
+            correlation(
+                &format!(
+                    "title: ordered\ncorrelation:\n  type: temporal_ordered\n  rules: [{rules}]\n  timespan: 60s\n"
+                ),
+                &bases,
+            )
+        };
+        let at = |corr: &CorrelationRule, bi: usize, method: &str, line: usize| {
+            let mut h = hit(
+                corr,
+                0,
+                bi,
+                "2026-10-24T15:35:31Z",
+                &[("cs-method", method.into())],
+                None,
+            );
+            h.file = Arc::from("access.log");
+            h.line = line;
+            h
+        };
+        // GET is logged on line 1, POST on line 2, in the same second.
+        let get_then_post = ordered("get, post");
+        let hits = vec![
+            at(&get_then_post, 1, "POST", 2),
+            at(&get_then_post, 0, "GET", 1),
+        ];
+        assert_eq!(run(&[get_then_post], &hits).0.hits.len(), 1);
+        let post_then_get = ordered("post, get");
+        let hits = vec![
+            at(&post_then_get, 1, "POST", 2),
+            at(&post_then_get, 0, "GET", 1),
+        ];
+        assert!(run(&[post_then_get], &hits).0.hits.is_empty());
     }
 }

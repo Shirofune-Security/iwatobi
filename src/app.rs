@@ -398,13 +398,6 @@ pub fn run(opts: &TimelineOptions) -> i32 {
             );
             st.summary.see_time(hit.timestamp);
             st.writers.write(row);
-            if corr.spec.correlation.generate.unwrap_or(false) {
-                // Member events are reported through the correlation only unless `generate: true`;
-                // the members' own rows are their summaries.
-                for m in &members {
-                    log_warn(&format!("correlation member: {}", m.summary));
-                }
-            }
         }
     }
     if let Err(e) = st.writers.finish() {

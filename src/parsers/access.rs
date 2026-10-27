@@ -828,10 +828,10 @@ fn flatten(object: &[(String, Json)], prefix: &str, out: &mut Vec<(String, Field
                 key,
                 i64::try_from(*u).map_or(FieldValue::Float(*u as f64), FieldValue::Int),
             )),
-            Json::Float(f) => out.push((
-                key,
-                integral(*f).map_or(FieldValue::Float(*f), FieldValue::Int),
-            )),
+            // A float stays a float even when it is whole (`2.000`): one field must not change
+            // type with its value, because sigma-rust never compares Int with Float. The
+            // taxonomy keys get their own Int coercion (A2).
+            Json::Float(f) => out.push((key, FieldValue::Float(*f))),
             Json::Str(s) => out.push((key, FieldValue::Str(s.clone()))),
         }
     }
@@ -2242,7 +2242,8 @@ mod tests {
             field(&ev, "big"),
             &FieldValue::Float(18_446_744_073_709_551_615.0)
         );
-        assert_eq!(field(&ev, "whole"), &FieldValue::Int(3));
+        // A whole float stays a float: a field's type must not depend on its value.
+        assert_eq!(field(&ev, "whole"), &FieldValue::Float(3.0));
         assert_eq!(field(&ev, "frac"), &FieldValue::Float(2.5));
         assert_eq!(field(&ev, "list_of_objects"), &s(r#"[{"k":"v"}]"#));
         assert!(selection_matches(

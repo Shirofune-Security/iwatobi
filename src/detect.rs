@@ -166,26 +166,24 @@ pub fn scan_lines<I: Iterator<Item = String>>(
                 });
             }
         }
+        for (ci, corr) in ruleset.correlations.iter().enumerate() {
+            for (bi, base) in corr.base_rules.iter().enumerate() {
+                if !(base.logsource.matches_any(&event.tags) && base.rule.is_match(&sigma_event)) {
+                    continue;
+                }
+                // A correlation base match is a hit of the event even when no correlation fires.
+                hit = true;
+                // Only an event with a time can take part in a time window.
+                let Some(ts) = ts_utc else { continue };
+                let summary = format!("{} ({}:{})", base.meta.title, file, idx + 1);
+                let mut base_hit = make_base_hit(corr, ci, bi, &sigma_event, &event, ts, summary);
+                base_hit.file = file.clone();
+                base_hit.line = idx + 1;
+                result.base_hits.push(base_hit);
+            }
+        }
         if hit {
             result.summary.events_with_hits += 1;
-        }
-        if let Some(ts) = ts_utc {
-            for (ci, corr) in ruleset.correlations.iter().enumerate() {
-                for (bi, base) in corr.base_rules.iter().enumerate() {
-                    if base.logsource.matches_any(&event.tags) && base.rule.is_match(&sigma_event) {
-                        let summary = format!("{} ({}:{})", base.meta.title, file, idx + 1);
-                        result.base_hits.push(make_base_hit(
-                            corr,
-                            ci,
-                            bi,
-                            &sigma_event,
-                            &event,
-                            ts,
-                            summary,
-                        ));
-                    }
-                }
-            }
         }
     }
     result.mixed_zone_sources = saw_zoned && saw_naive;

@@ -1406,6 +1406,8 @@ mod tests {
             value_field: None,
             hostname: Some("honeypot".to_string()),
             summary: summary.to_string(),
+            file: std::sync::Arc::from("apache2/access.log"),
+            line: 0,
         };
         let members = [
             member(

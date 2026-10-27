@@ -45,11 +45,21 @@ pub struct LoadedRule {
 
 /// A base rule of a correlation file (only reported through its correlation).
 pub struct BaseRule {
-    /// The `name:` (or id/title) the correlation references it by.
-    pub name: String,
+    /// Every identifier the rule can be referenced by in `rules:` and keyed by in `aliases:`:
+    /// `name` (or, without one, `id`, then `title`) first, then `id` and `title`. The `rules:`
+    /// entry that referenced it is always one of them.
+    pub identifiers: Vec<String>,
     pub rule: Rule,
     pub meta: RuleMeta,
     pub logsource: LogSourceSpec,
+}
+
+#[cfg(test)]
+impl BaseRule {
+    /// The identifier a correlation references the rule by (`name`, else `id`, else `title`).
+    pub fn name(&self) -> &str {
+        self.identifiers.first().map(String::as_str).unwrap_or("")
+    }
 }
 
 /// A correlation rule with its base rules.
@@ -59,6 +69,9 @@ pub struct CorrelationRule {
     pub base_rules: Vec<BaseRule>,
     /// Indices into `base_rules`, in the order of the correlation's `rules:` list.
     pub rule_order: Vec<usize>,
+    /// `condition: {neq: n}`. The Sigma correlation specification allows `neq`, but sigma-rust's
+    /// `CorrelationCondition` has no such field, so it is read from the YAML by the loader.
+    pub condition_neq: Option<u64>,
 }
 
 /// Which rules to keep (`-m`, `-D`, `-u`, `--include/exclude-status`, `--include/exclude-tag`).
@@ -319,6 +332,11 @@ fn is_correlation_doc(doc: &Value) -> bool {
 }
 
 fn load_detection_doc(path: &Path, mut doc: Value, filters: &RuleFilters, set: &mut RuleSet) {
+    if let Err(e) = check_condition_patterns(&doc) {
+        log_error(&format!("Failed to parse rule {}: {e}", path.display()));
+        set.stats.failed += 1;
+        return;
+    }
     normalize_detection(&mut doc);
     let rule: Rule = match yaml_serde::from_value(doc) {
         Ok(rule) => rule,
@@ -491,13 +509,39 @@ struct BaseDoc {
 struct PendingCorrelation {
     spec: SigmaCorrelationRule,
     meta: RuleMeta,
+    neq: Option<u64>,
     /// Indices into the file's base documents, in `rules:` order.
     resolved: Vec<usize>,
 }
 
 fn load_correlation_file(path: &Path, docs: Vec<Value>, filters: &RuleFilters, set: &mut RuleSet) {
     match prepare_correlation_file(path, docs) {
-        Ok((bases, pending)) => commit_correlations(path, bases, pending, filters, set),
+        Ok((bases, pending)) => {
+            // A detection document that no correlation of the file references is an ordinary
+            // rule that happens to share the file (pySigma loads it the same way).
+            // The base rules of a correlation with `generate: true` also report their own matches
+            // (Sigma correlation specification), so they are loaded as standalone rules as well.
+            let standalone: Vec<Value> = bases
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| {
+                    let referenced = pending.iter().filter(|p| p.resolved.contains(i));
+                    let mut any = false;
+                    for p in referenced {
+                        any = true;
+                        if p.spec.correlation.generate.unwrap_or(false) {
+                            return true;
+                        }
+                    }
+                    !any
+                })
+                .map(|(_, b)| b.value.clone())
+                .collect();
+            commit_correlations(path, bases, pending, filters, set);
+            for doc in standalone {
+                load_detection_doc(path, doc, filters, set);
+            }
+        }
         Err(e) => {
             log_error(&format!("Failed to parse rule {}: {e}", path.display()));
             set.stats.failed += 1;
@@ -518,6 +562,7 @@ fn prepare_correlation_file(
             correlation_docs.push(doc);
             continue;
         }
+        check_condition_patterns(&doc).map_err(|e| format!("base rule: {e}"))?;
         normalize_detection(&mut doc);
         let rule: Rule =
             yaml_serde::from_value(doc.clone()).map_err(|e| format!("base rule: {e}"))?;
@@ -526,6 +571,11 @@ fn prepare_correlation_file(
             .clone()
             .or_else(|| rule.id.clone())
             .unwrap_or_else(|| rule.title.clone());
+        if bases.iter().any(|b: &BaseDoc| b.name == name) {
+            return Err(format!(
+                "two rules of the file are named '{name}'; correlation references would be ambiguous"
+            ));
+        }
         bases.push(BaseDoc {
             name,
             id: rule.id.clone(),
@@ -537,13 +587,21 @@ fn prepare_correlation_file(
     }
     let mut pending = Vec::with_capacity(correlation_docs.len());
     for doc in correlation_docs {
+        let neq = check_correlation_section(&doc)?;
         let spec: SigmaCorrelationRule =
             yaml_serde::from_value(doc).map_err(|e| format!("correlation rule: {e}"))?;
+        if crate::correlate::timespan_seconds(&spec.correlation.timespan).is_none() {
+            return Err(format!(
+                "correlation rule '{}' has an invalid timespan '{}' (use a number followed by s, m, h or d)",
+                spec.title, spec.correlation.timespan
+            ));
+        }
         let meta = meta_from_correlation(&spec, path)?;
         let resolved = resolve_base_rules(&spec, &bases)?;
         pending.push(PendingCorrelation {
             spec,
             meta,
+            neq,
             resolved,
         });
     }
@@ -596,6 +654,7 @@ fn commit_correlations(
     for PendingCorrelation {
         mut spec,
         meta,
+        neq,
         resolved,
     } in pending
     {
@@ -616,7 +675,8 @@ fn commit_correlations(
             continue;
         }
         let mut base_rules = Vec::with_capacity(resolved.len());
-        for &i in &resolved {
+        for (k, &i) in resolved.iter().enumerate() {
+            let entry = spec.correlation.rules.get(k).cloned();
             let base = &mut bases[i];
             let rule = match take_rule(base) {
                 Ok(rule) => rule,
@@ -629,8 +689,22 @@ fn commit_correlations(
                     return;
                 }
             };
+            let mut identifiers: Vec<String> = Vec::new();
+            for id in [
+                Some(base.name.clone()),
+                base.id.clone(),
+                Some(base.title.clone()),
+                entry,
+            ]
+            .into_iter()
+            .flatten()
+            {
+                if !identifiers.contains(&id) {
+                    identifiers.push(id);
+                }
+            }
             base_rules.push(BaseRule {
-                name: base.name.clone(),
+                identifiers,
                 meta: meta_from_rule(&rule, path),
                 logsource: base.logsource.clone(),
                 rule,
@@ -644,6 +718,7 @@ fn commit_correlations(
             meta,
             base_rules,
             rule_order,
+            condition_neq: neq,
         });
     }
 }
@@ -735,9 +810,17 @@ fn rewrite_fieldless_keys(value: &mut Value) {
     }
     let entries = std::mem::take(map);
     let mut rebuilt = Mapping::with_capacity(entries.len());
-    for (key, val) in entries {
+    for (key, mut val) in entries {
         let key = match key.as_str() {
-            Some(k) if field_part(k).is_empty() => Value::String(raw_field_key(k)),
+            Some(k) if field_part(k).is_empty() => {
+                let new_key = raw_field_key(k);
+                // sigma-rust only accepts strings under contains/startswith/endswith, while a
+                // keyword list may hold numbers (`'|all': [4624, 'inside']`).
+                if has_string_modifier(&new_key) {
+                    stringify_scalars(&mut val);
+                }
+                Value::String(new_key)
+            }
             _ => key,
         };
         rebuilt.insert(key, val);
@@ -769,6 +852,144 @@ fn raw_field_key(key: &str) -> String {
         out.push_str(m);
     }
     out
+}
+
+fn has_string_modifier(key: &str) -> bool {
+    key.split('|').skip(1).any(|m| {
+        matches!(
+            m.trim().to_ascii_lowercase().as_str(),
+            "contains" | "startswith" | "endswith"
+        )
+    })
+}
+
+/// Numbers and booleans (alone or in a list) become strings.
+fn stringify_scalars(value: &mut Value) {
+    match value {
+        Value::Number(n) => *value = Value::String(n.to_string()),
+        Value::Bool(b) => *value = Value::String(b.to_string()),
+        Value::Sequence(items) => items.iter_mut().for_each(stringify_scalars),
+        _ => {}
+    }
+}
+
+/// Keys the Sigma correlation specification defines for `correlation:` and its `condition:`.
+const CORRELATION_KEYS: &[&str] = &[
+    "type",
+    "rules",
+    "group-by",
+    "group_by",
+    "timespan",
+    "condition",
+    "generate",
+    "aliases",
+];
+const CONDITION_KEYS: &[&str] = &["gt", "gte", "lt", "lte", "eq", "neq", "field"];
+
+/// Reject unknown keys in a correlation's `correlation:` / `condition:` sections (serde would
+/// silently ignore a typo such as `groupby:`, and the rule would then count across every client)
+/// and return the `neq` threshold, which sigma-rust's `CorrelationCondition` cannot hold.
+fn check_correlation_section(doc: &Value) -> Result<Option<u64>, String> {
+    let title = doc.get("title").and_then(Value::as_str).unwrap_or("?");
+    let Some(section) = doc.get("correlation").and_then(Value::as_mapping) else {
+        return Err(format!(
+            "correlation rule '{title}': 'correlation' must be a mapping"
+        ));
+    };
+    for key in section.keys() {
+        let k = key.as_str().unwrap_or("");
+        if !CORRELATION_KEYS.contains(&k) {
+            return Err(format!(
+                "correlation rule '{title}': unknown key '{k}' in 'correlation'"
+            ));
+        }
+    }
+    let Some(condition) = section.get("condition") else {
+        return Ok(None);
+    };
+    let Some(condition) = condition.as_mapping() else {
+        return Err(format!(
+            "correlation rule '{title}': 'condition' must be a mapping"
+        ));
+    };
+    for key in condition.keys() {
+        let k = key.as_str().unwrap_or("");
+        if !CONDITION_KEYS.contains(&k) {
+            return Err(format!(
+                "correlation rule '{title}': unknown condition operator '{k}'"
+            ));
+        }
+    }
+    match condition.get("neq") {
+        None => Ok(None),
+        Some(v) => v.as_u64().map(Some).ok_or_else(|| {
+            format!("correlation rule '{title}': 'neq' must be a non-negative integer")
+        }),
+    }
+}
+
+/// `1 of selection_*` / `all of filter*` must name at least one search identifier. sigma-rust
+/// evaluates `all of <nothing>` as true, so a typo in the pattern would make the rule match
+/// every event of its log source.
+fn check_condition_patterns(doc: &Value) -> Result<(), String> {
+    let Some(detection) = doc.get("detection").and_then(Value::as_mapping) else {
+        return Ok(());
+    };
+    let names: Vec<&str> = detection
+        .keys()
+        .filter_map(Value::as_str)
+        .filter(|k| *k != "condition")
+        .collect();
+    let conditions: Vec<&str> = match detection.get("condition") {
+        Some(Value::String(s)) => vec![s.as_str()],
+        Some(Value::Sequence(items)) => items.iter().filter_map(Value::as_str).collect(),
+        _ => Vec::new(),
+    };
+    for condition in conditions {
+        let words: Vec<&str> = condition
+            .split(|c: char| c.is_whitespace() || c == '(' || c == ')')
+            .filter(|w| !w.is_empty())
+            .collect();
+        for w in words.windows(3) {
+            let quantifier = w[0].to_ascii_lowercase();
+            let is_quantifier = quantifier == "all"
+                || quantifier == "any"
+                || quantifier.chars().all(|c| c.is_ascii_digit());
+            if !is_quantifier || !w[1].eq_ignore_ascii_case("of") {
+                continue;
+            }
+            let pattern = w[2];
+            if pattern.eq_ignore_ascii_case("them") {
+                continue;
+            }
+            if !names.iter().any(|n| glob_match(pattern, n)) {
+                return Err(format!(
+                    "condition '{condition}': '{pattern}' matches no search identifier"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// `*` matches any run of characters (search-identifier patterns have no other wildcard).
+fn glob_match(pattern: &str, text: &str) -> bool {
+    let parts: Vec<&str> = pattern.split('*').collect();
+    if parts.len() == 1 {
+        return pattern == text;
+    }
+    let (first, last) = (parts[0], parts[parts.len() - 1]);
+    if !text.starts_with(first) || !text[first.len()..].ends_with(last) {
+        return false;
+    }
+    let mut rest = &text[first.len()..text.len() - last.len()];
+    for part in &parts[1..parts.len() - 1] {
+        match rest.find(part) {
+            Some(at) => rest = &rest[at + part.len()..],
+            None => return false,
+        }
+    }
+    true
 }
 
 #[cfg(test)]
@@ -898,7 +1119,7 @@ mod tests {
             })
             .expect("the PHP2Shell chain correlation");
         assert_eq!(chain.rule_order, vec![0, 1, 2]);
-        let names: Vec<&str> = chain.base_rules.iter().map(|b| b.name.as_str()).collect();
+        let names: Vec<&str> = chain.base_rules.iter().map(|b| b.name()).collect();
         assert_eq!(
             names,
             vec![
@@ -946,7 +1167,7 @@ mod tests {
             .expect("the rapid POST correlation");
         assert_eq!(rapid.rule_order, vec![0]);
         assert_eq!(rapid.base_rules.len(), 1);
-        assert_eq!(rapid.base_rules[0].name, "post_to_php_index");
+        assert_eq!(rapid.base_rules[0].name(), "post_to_php_index");
         assert_eq!(
             rapid.spec.correlation.rules,
             vec!["POST Request To Web Root Or PHP Index"]
@@ -1798,7 +2019,7 @@ detection:
         assert_eq!(corr.meta.tags, vec!["attack.t1190"]);
         assert_eq!(corr.meta.rule_file, "chain.yml");
         assert_eq!(corr.rule_order, vec![0, 1, 2]);
-        let names: Vec<&str> = corr.base_rules.iter().map(|b| b.name.as_str()).collect();
+        let names: Vec<&str> = corr.base_rules.iter().map(|b| b.name()).collect();
         assert_eq!(
             names,
             vec!["base_by_name", "base-two-id", "Base Three Title"]
@@ -1954,7 +2175,9 @@ detection:
             },
         );
         assert!(level.correlations.is_empty());
-        assert_eq!(level.stats.skipped_level, 1);
+        // The correlation, plus the two base documents no correlation references, which load as
+        // standalone rules and are below `high` too.
+        assert_eq!(level.stats.skipped_level, 3);
 
         let tag = load_rules(
             dir.path(),
@@ -1965,7 +2188,8 @@ detection:
             },
         );
         assert!(tag.correlations.is_empty());
-        assert_eq!(tag.stats.skipped_tag, 1);
+        // The correlation and the two untagged, unreferenced base documents.
+        assert_eq!(tag.stats.skipped_tag, 3);
 
         let tag_ok = load_rules(
             dir.path(),
@@ -2017,7 +2241,7 @@ detection:
         let second = &set.correlations[1];
         assert_eq!(second.meta.title, "Second");
         assert_eq!(second.base_rules.len(), 1);
-        assert_eq!(second.base_rules[0].name, "base_by_name");
+        assert_eq!(second.base_rules[0].name(), "base_by_name");
         assert_eq!(second.spec.correlation.rules, vec!["Base One"]);
         assert_eq!(
             second.spec.correlation.group_by.as_deref(),
@@ -2089,5 +2313,131 @@ detection:
         assert!(!ends_with_unescaped_star(""));
         assert_eq!(trailing_backslashes("a\\\\"), 2);
         assert_eq!(trailing_backslashes("a"), 0);
+    }
+
+    const STRAY: &str = "title: Stray\nid: stray\nlogsource: {product: linux, service: syslog}\ndetection:\n  keywords: ['stray']\n  condition: keywords\nlevel: high\n";
+    const POST_BASE: &str = "title: Post Base\nname: post_base\nlogsource: {category: webserver}\ndetection:\n  sel:\n    cs-method: POST\n  condition: sel\nlevel: low\n";
+
+    fn event_count(extra: &str) -> String {
+        format!(
+            "title: Count\ncorrelation:\n    type: event_count\n    rules: [post_base]\n    timespan: 60s\n{extra}level: medium\n---\n{POST_BASE}"
+        )
+    }
+
+    #[test]
+    fn unknown_correlation_keys_fail_the_file_and_neq_is_kept() {
+        let dir = tempdir().unwrap();
+        write(
+            dir.path(),
+            "typo.yml",
+            &event_count("    groupby: [c-ip]\n    condition:\n        gte: 2\n"),
+        );
+        write(
+            dir.path(),
+            "op.yml",
+            &event_count("    condition:\n        ne: 2\n"),
+        );
+        let set = load_rules(dir.path(), &RuleFilters::default());
+        assert_eq!(set.stats.failed, 2);
+        assert!(set.correlations.is_empty());
+
+        let dir = tempdir().unwrap();
+        write(
+            dir.path(),
+            "neq.yml",
+            &event_count("    condition:\n        neq: 1\n"),
+        );
+        let set = load_rules(dir.path(), &RuleFilters::default());
+        assert_eq!(set.stats.failed, 0);
+        assert_eq!(set.correlations.len(), 1);
+        assert_eq!(set.correlations[0].condition_neq, Some(1));
+    }
+
+    #[test]
+    fn invalid_timespan_and_duplicate_names_fail_the_file() {
+        let dir = tempdir().unwrap();
+        write(
+            dir.path(),
+            "weeks.yml",
+            &event_count("    condition:\n        gte: 2\n")
+                .replace("timespan: 60s", "timespan: 1w"),
+        );
+        write(
+            dir.path(),
+            "dup.yml",
+            &format!(
+                "{}---\n{}",
+                event_count("    condition:\n        gte: 2\n"),
+                POST_BASE.replace("POST", "GET")
+            ),
+        );
+        let set = load_rules(dir.path(), &RuleFilters::default());
+        assert_eq!(set.stats.failed, 2);
+        assert!(set.correlations.is_empty());
+        assert!(set.rules.is_empty());
+    }
+
+    #[test]
+    fn unreferenced_documents_and_generate_bases_load_as_standalone_rules() {
+        let dir = tempdir().unwrap();
+        write(
+            dir.path(),
+            "mixed.yml",
+            &format!(
+                "{}---\n{STRAY}",
+                event_count("    condition:\n        gte: 2\n")
+            ),
+        );
+        let set = load_rules(dir.path(), &RuleFilters::default());
+        assert_eq!(set.correlations.len(), 1);
+        assert_eq!(titles(&set), vec!["Stray".to_string()]);
+
+        let dir = tempdir().unwrap();
+        write(
+            dir.path(),
+            "generate.yml",
+            &event_count("    generate: true\n    condition:\n        gte: 2\n"),
+        );
+        let set = load_rules(dir.path(), &RuleFilters::default());
+        assert_eq!(set.correlations.len(), 1);
+        assert_eq!(titles(&set), vec!["Post Base".to_string()]);
+    }
+
+    #[test]
+    fn a_quantifier_pattern_that_matches_nothing_fails_the_rule() {
+        let dir = tempdir().unwrap();
+        write(
+            dir.path(),
+            "typo.yml",
+            "title: Typo\nlogsource: {product: linux}\ndetection:\n  selection_a: ['x']\n  condition: all of selectoin_*\nlevel: high\n",
+        );
+        write(
+            dir.path(),
+            "ok.yml",
+            "title: Ok\nlogsource: {product: linux}\ndetection:\n  selection_a: ['x']\n  filter: ['y']\n  condition: 1 of selection_* and not 1 of filter* and not all of them\nlevel: high\n",
+        );
+        let set = load_rules(dir.path(), &RuleFilters::default());
+        assert_eq!(set.stats.failed, 1);
+        assert_eq!(titles(&set), vec!["Ok".to_string()]);
+        assert!(glob_match("selection_*", "selection_a"));
+        assert!(glob_match("*_a", "selection_a"));
+        assert!(glob_match("sel*on*a", "selection_a"));
+        assert!(!glob_match("filter*", "selection_a"));
+    }
+
+    #[test]
+    fn fieldless_all_with_numbers_loads_and_matches() {
+        let mut doc: Value = yaml_serde::from_str(
+            "title: t\nlogsource: {product: linux}\ndetection:\n  keywords:\n    '|all': [4624, 'inside']\n  condition: keywords\n",
+        )
+        .unwrap();
+        normalize_detection(&mut doc);
+        let rule: Rule = yaml_serde::from_value(doc).expect("numeric '|all' values must load");
+        let mut ev = Event::new();
+        ev.insert("raw", "number 4624 inside");
+        assert!(rule.is_match(&ev));
+        let mut other = Event::new();
+        other.insert("raw", "number 4625 inside");
+        assert!(!rule.is_match(&other));
     }
 }
