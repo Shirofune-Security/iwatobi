@@ -134,9 +134,8 @@ pub struct ParsedEvent {
     pub primary_logsource: String,
     /// Every log source identity of this event.
     pub tags: Vec<LogSourceTag>,
-    /// Parsed fields in display order; the first `details_len` form the `Details` column.
+    /// Parsed fields in display order (the `Details` column): the main fields of the format first.
     pub fields: Vec<(String, FieldValue)>,
-    pub details_len: usize,
     /// The original line, without the trailing newline.
     pub raw: String,
 }
@@ -151,7 +150,6 @@ impl ParsedEvent {
             primary_logsource: primary.display(),
             tags: vec![*primary],
             fields: Vec::new(),
-            details_len: 0,
             raw: raw.to_string(),
         }
     }
@@ -164,11 +162,6 @@ impl ParsedEvent {
         } else {
             self.fields.push((key.to_string(), value));
         }
-    }
-
-    /// Mark the fields pushed so far as the `Details` fields.
-    pub fn end_details(&mut self) {
-        self.details_len = self.fields.len();
     }
 
     pub fn add_tag(&mut self, tag: LogSourceTag) {
@@ -199,14 +192,6 @@ impl ParsedEvent {
         self.field(key).and_then(FieldValue::as_str)
     }
 
-    pub fn details(&self) -> &[(String, FieldValue)] {
-        &self.fields[..self.details_len.min(self.fields.len())]
-    }
-
-    pub fn extra(&self) -> &[(String, FieldValue)] {
-        &self.fields[self.details_len.min(self.fields.len())..]
-    }
-
     /// The sigma-rust event: every field, plus `hostname` and `raw` (the whole line, so that
     /// keywords match "the full log message" as the Sigma specification requires).
     pub fn to_sigma_event(&self) -> Event {
@@ -233,11 +218,9 @@ mod tests {
         ev.push("sc-status", 404i64);
         ev.push("cs-referer", FieldValue::str_or_null("-"));
         ev.push("sc-bytes", FieldValue::int_or_null("-"));
-        ev.end_details();
         ev.push("extra", true);
         ev.hostname = Some("web01".into());
-        assert_eq!(ev.details().len(), 4);
-        assert_eq!(ev.extra().len(), 1);
+        assert_eq!(ev.fields.len(), 5);
         let rule = sigma_rust::rule_from_yaml(
             "title: t\nlogsource: {category: webserver}\ndetection:\n  sel:\n    cs-method: POST\n    cs-referer: null\n    sc-status|gte: 400\n    hostname: web01\n  condition: sel\n",
         )

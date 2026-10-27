@@ -46,8 +46,8 @@ honeypot evidence of confirmed remote code execution.
   vsftpd and ClamAV logs, Apache / nginx access logs (common, combined, vhost_combined, JSON lines),
   Apache 2.2/2.4 and nginx error logs, PHP error logs and php-fpm logs. PHP engine messages are
   recognised wherever they appear (Apache error log, nginx FastCGI stderr, php-fpm, syslog).
-- **Output**: a colored timeline on the terminal (timestamp, rule title, level, computer, log
-  source, log file, line number, details), and CSV / JSON / JSONL files with everything a DFIR report needs: MITRE ATT&CK
+- **Output**: a colored timeline on the terminal (timestamp, rule title, level, log source, log
+  file, line number, details), and CSV / JSON / JSONL files with everything a DFIR report needs: MITRE ATT&CK
   tactics and techniques, every parsed field, rule file and ID, log file and line number. Profiles
   are configurable in `config/profiles.yaml`.
 - **Timezone aware**: logs that carry no zone (syslog, Apache error log, php-fpm) are read in the
@@ -178,20 +178,20 @@ file's modification time is assumed, minus one for lines that would otherwise be
 | Profile | Columns |
 | --- | --- |
 | `minimal` | Timestamp, RuleTitle, Level, Details |
-| `standard` (terminal default) | Timestamp, RuleTitle, Level, Computer, LogSource, LogFile, LineNumber, Details |
-| `verbose` (file default) | standard + MitreTactics, MitreTags, OtherTags, ExtraFieldInfo, RuleFile, RuleID |
+| `standard` (terminal default) | Timestamp, RuleTitle, Level, LogSource, LogFile, LineNumber, Details |
+| `verbose` (file default) | standard + MitreTactics, MitreTags, OtherTags, RuleFile, RuleID |
 | `super-verbose` | verbose + RawLine, RuleAuthor, RuleCreationDate, RuleModifiedDate, Status, Description, References, FalsePositives |
-| `all-field-info`, `all-field-info-verbose` | every parsed field instead of Details / ExtraFieldInfo |
 
-`Details` holds the key fields of the event (`Proc`, `PID`, `Msg` for syslog; `SrcIP`, `Method`,
-`URI`, `Status`, `Bytes`, `Referer`, `UA` for access logs; ...) and `ExtraFieldInfo` the rest. In
-CSV and on the terminal they are rendered as `Key: value ¦ Key: value`; in JSON/JSONL they are
-objects. Run `iwatobi list-profiles` to see the exact columns.
+`Details` holds every parsed field of the event, the main ones first (`Proc`, `PID`, `Msg` for
+syslog; `SrcIP`, `Method`, `URI`, `Status`, `Bytes`, `Referer`, `UA` for access logs; ...). In
+CSV and on the terminal it is rendered as `Key: value ¦ Key: value`; in JSON/JSONL it is an
+object. Run `iwatobi list-profiles` to see the exact columns. There is no `Computer` column as in
+Hayabusa: a syslog host name can be shown by adding `%Computer%` to a profile.
 
 `LogFile` and `LineNumber` say where the event was logged. For a correlation alert, `LogFile` lists
 the files its events came from and `LineNumber` is `-`. The script location that PHP itself
-reports (`... in /var/www/html/index.php on line 12`) is not a log location: it is kept in
-`ExtraFieldInfo` as `PhpFile` / `PhpLine`.
+reports (`... in /var/www/html/index.php on line 12`) is not a log location: it is shown in
+`Details` as `PhpFile` / `PhpLine`.
 
 ## 📏 Rules
 

@@ -175,7 +175,6 @@ impl LineParser for ApacheErrorParser {
         );
         ev.push("client", client);
         ev.push("message", message);
-        ev.end_details();
         ev.push(
             "tid",
             group("tid").map_or(FieldValue::Null, FieldValue::int_or_null),
@@ -314,7 +313,6 @@ mod tests {
                 "referer"
             ]
         );
-        assert_eq!(ev.details().len(), 5);
         assert_eq!(ev.field_str("module"), Some("mpm_event"));
         assert_eq!(ev.field_str("level"), Some("notice"));
         assert_eq!(ev.field("pid"), Some(&FieldValue::Int(1000)));
@@ -378,7 +376,6 @@ mod tests {
         );
         assert_eq!(ev.field_str("file"), Some("Unknown"));
         assert_eq!(ev.field("line"), Some(&FieldValue::Int(0)));
-        assert_eq!(ev.details().len(), 5);
     }
 
     #[test]
@@ -594,7 +591,6 @@ mod tests {
         );
         assert_eq!(keys(&ev), vec!["message"]);
         assert_eq!(ev.field_str("message"), Some("sh: 1: wget: not found"));
-        assert_eq!(ev.details().len(), 1);
 
         let first = p.parse_line(SEGFAULT).expect("event");
         let ev = p.parse_line(GLIBC).expect("event");
@@ -619,11 +615,6 @@ mod tests {
         assert_eq!(ev.field_str("php_type"), Some("Warning"));
         assert_eq!(ev.field_str("file"), Some("Command line code"));
         assert_eq!(ev.field("line"), Some(&FieldValue::Int(1)));
-        assert_eq!(
-            ev.details().len(),
-            1,
-            "php fields are extra fields on continuations"
-        );
 
         // the next entry resets the borrowed timestamp
         let next = p.parse_line(APACHE22).expect("event");

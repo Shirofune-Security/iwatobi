@@ -45,8 +45,8 @@ Iwatobiには、実行可能なSigmaHQのLinuxおよびWebサーバー向けル�
   出力、vsftpdとClamAVのログ、Apache / nginxのアクセスログ（common、combined、vhost_combined、JSON
   Lines）、Apache 2.2/2.4とnginxのエラーログ、PHPのエラーログ、php-fpmのログ。PHPエンジンのメッセージは、
   どこに出力されていても認識します（Apacheのエラーログ、nginxのFastCGI stderr、php-fpm、syslog）。
-- **出力**: ターミナルにはカラーのタイムライン（タイムスタンプ、ルールタイトル、レベル、コンピュータ名、
-  ログソース、ログファイル、行番号、詳細）を表示し、CSV / JSON / JSONLファイルにはDFIRレポートに必要な情報（MITRE ATT&CKの
+- **出力**: ターミナルにはカラーのタイムライン（タイムスタンプ、ルールタイトル、レベル、ログソース、
+  ログファイル、行番号、詳細）を表示し、CSV / JSON / JSONLファイルにはDFIRレポートに必要な情報（MITRE ATT&CKの
   戦術と技術、解析したすべてのフィールド、ルールファイルとID、ログファイルと行番号）を保存します。
   プロファイルは`config/profiles.yaml`で設定できます。
 - **タイムゾーン対応**: タイムゾーン情報を持たないログ（syslog、Apacheのエラーログ、php-fpm）は、
@@ -183,20 +183,20 @@ syslog（RFC 3164）、Apacheのエラーログ、nginxのエラーログ、php-
 | プロファイル | 列 |
 | --- | --- |
 | `minimal` | Timestamp, RuleTitle, Level, Details |
-| `standard`（ターミナルのデフォルト） | Timestamp, RuleTitle, Level, Computer, LogSource, LogFile, LineNumber, Details |
-| `verbose`（ファイル出力のデフォルト） | standard + MitreTactics, MitreTags, OtherTags, ExtraFieldInfo, RuleFile, RuleID |
+| `standard`（ターミナルのデフォルト） | Timestamp, RuleTitle, Level, LogSource, LogFile, LineNumber, Details |
+| `verbose`（ファイル出力のデフォルト） | standard + MitreTactics, MitreTags, OtherTags, RuleFile, RuleID |
 | `super-verbose` | verbose + RawLine, RuleAuthor, RuleCreationDate, RuleModifiedDate, Status, Description, References, FalsePositives |
-| `all-field-info`、`all-field-info-verbose` | Details / ExtraFieldInfoの代わりに解析したすべてのフィールド |
 
-`Details`にはイベントの主要なフィールド（syslogでは`Proc`、`PID`、`Msg`、アクセスログでは`SrcIP`、
-`Method`、`URI`、`Status`、`Bytes`、`Referer`、`UA`など）が入り、`ExtraFieldInfo`には残りのフィールド
-が入ります。CSVとターミナルでは`Key: value ¦ Key: value`の形式で表示し、JSON/JSONLではオブジェクトと
-して出力します。正確な列は`iwatobi list-profiles`で確認できます。
+`Details`には、解析したイベントのすべてのフィールドが主要なものから順に入ります（syslogでは`Proc`、
+`PID`、`Msg`、アクセスログでは`SrcIP`、`Method`、`URI`、`Status`、`Bytes`、`Referer`、`UA`など）。
+CSVとターミナルでは`Key: value ¦ Key: value`の形式で表示し、JSON/JSONLではオブジェクトとして出力します。
+正確な列は`iwatobi list-profiles`で確認できます。Hayabusaのような`Computer`列はありません。syslogの
+ホスト名を表示したい場合は、プロファイルに`%Computer%`を追加してください。
 
 `LogFile`と`LineNumber`は、イベントが記録された場所を示します。相関ルールのアラートでは、`LogFile`に
 元になったイベントのログファイルを列挙し、`LineNumber`は`-`になります。PHP自身がメッセージ内で報告する
 スクリプトの場所（`... in /var/www/html/index.php on line 12`）はログの場所ではないため、
-`ExtraFieldInfo`に`PhpFile` / `PhpLine`として格納します。
+`Details`に`PhpFile` / `PhpLine`として表示します。
 
 ## 📏 ルール
 

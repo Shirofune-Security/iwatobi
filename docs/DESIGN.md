@@ -412,3 +412,11 @@ with a green spinner and 40-column bar (plain with `-K`), and the file being sca
 `-q` and single-file scans no longer hide it; it still draws only on a terminal. Like Hayabusa, the
 profile in use is printed before the scan in every mode (`Output profile: standard`). Messages printed during the
 scan (`-v`, warnings) suspend the bar so they do not tear it. The journal counts as one more item.
+
+A20. **One Details column, no Computer column (0.1.0 re-release).** Linux log lines have few fields, so
+`%Details%` is every parsed field, the main fields of the format first (they are pushed first), plus
+`TimestampInferred: true` when the timestamp was borrowed; a correlation's Details end with its `Members`.
+`%ExtraFieldInfo%` and `%AllFieldInfo%` and the `all-field-info` / `all-field-info-verbose` profiles are
+gone, and so is the details/extra split of `ParsedEvent` (`details_len`, `end_details`). No default profile
+has `Computer`: an access log has no host name and a live scan's is the local one. `%Computer%` stays as a
+placeholder for custom profiles (syslog host names from a central log server). This overrides §9, A15 and A18.

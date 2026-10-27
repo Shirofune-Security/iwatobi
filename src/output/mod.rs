@@ -58,8 +58,6 @@ pub enum Placeholder {
     Computer,
     LogSource,
     Details,
-    ExtraFieldInfo,
-    AllFieldInfo,
     RawLine,
     LineNumber,
     LogFile,
@@ -88,8 +86,6 @@ impl Placeholder {
             "Computer" => Placeholder::Computer,
             "LogSource" => Placeholder::LogSource,
             "Details" => Placeholder::Details,
-            "ExtraFieldInfo" => Placeholder::ExtraFieldInfo,
-            "AllFieldInfo" => Placeholder::AllFieldInfo,
             "RawLine" => Placeholder::RawLine,
             "LineNumber" => Placeholder::LineNumber,
             "LogFile" => Placeholder::LogFile,
@@ -208,7 +204,7 @@ pub enum Cell {
     Text(String),
     Number(i64),
     Null,
-    /// Ordered key/value pairs (Details, ExtraFieldInfo, AllFieldInfo).
+    /// Ordered key/value pairs (Details).
     Map(Vec<(String, serde_json::Value)>),
     /// A list (tags, references, false positives).
     List(Vec<String>),
@@ -296,7 +292,7 @@ fn rule_cell(placeholder: Placeholder, meta: &RuleMeta, tags: &SplitTags) -> Opt
     })
 }
 
-/// Human label of a parsed field in the Details / ExtraFieldInfo / AllFieldInfo cells.
+/// Human label of a parsed field in the Details cell.
 pub fn field_label(key: &str) -> String {
     let label = match key {
         "process" => "Proc",
@@ -378,13 +374,7 @@ pub fn render_detection(
             }
             Placeholder::Computer => opt_text(event.hostname.as_deref()),
             Placeholder::LogSource => text(&event.primary_logsource),
-            Placeholder::Details => Cell::Map(field_map(event.details(), false)),
-            Placeholder::ExtraFieldInfo => {
-                Cell::Map(field_map(event.extra(), event.timestamp_inferred))
-            }
-            Placeholder::AllFieldInfo => {
-                Cell::Map(field_map(&event.fields, event.timestamp_inferred))
-            }
+            Placeholder::Details => Cell::Map(field_map(&event.fields, event.timestamp_inferred)),
             Placeholder::RawLine => text(&event.raw),
             Placeholder::LineNumber => Cell::Number(i64::try_from(det.line).unwrap_or(i64::MAX)),
             Placeholder::LogFile => opt_text(Some(&det.file)),
@@ -415,8 +405,8 @@ fn is_location(rest: &str) -> bool {
 }
 
 /// The Details map of a correlation row: `Count`, the distinct `Rules` (joined with `, `, as
-/// design §8 writes them), `First`/`Last` member time and the `GroupBy` values when the
-/// correlation groups.
+/// design §8 writes them), `First`/`Last` member time, the `GroupBy` values when the
+/// correlation groups, and the `Members` (`Rule title (file:line)` of each member event).
 fn correlation_details(
     hit: &CorrelationHit,
     members: &[&BaseHit],
@@ -450,6 +440,15 @@ fn correlation_details(
             JsonValue::String(sanitize_control_chars(&hit.group_values.join(", "))),
         ));
     }
+    details.push((
+        "Members".to_string(),
+        JsonValue::Array(
+            members
+                .iter()
+                .map(|m| JsonValue::String(sanitize_control_chars(&m.summary)))
+                .collect(),
+        ),
+    ));
     details
 }
 
@@ -463,15 +462,6 @@ pub fn render_correlation(
 ) -> Row {
     let tags = profile_tags(profile, meta);
     let details = correlation_details(hit, members, opts);
-    let extra = vec![(
-        "Members".to_string(),
-        JsonValue::Array(
-            members
-                .iter()
-                .map(|m| JsonValue::String(sanitize_control_chars(&m.summary)))
-                .collect(),
-        ),
-    )];
     let cells = profile
         .columns
         .iter()
@@ -480,12 +470,8 @@ pub fn render_correlation(
             Placeholder::Computer => opt_text(hit.hostname.as_deref()),
             Placeholder::LogSource => Cell::Text("correlation".to_string()),
             Placeholder::Details => Cell::Map(details.clone()),
-            Placeholder::ExtraFieldInfo => Cell::Map(extra.clone()),
-            Placeholder::AllFieldInfo => {
-                Cell::Map(details.iter().chain(extra.iter()).cloned().collect())
-            }
             // A correlation spans several lines, often of several files: show the files, and leave
-            // the line to the member list (`file:line` in ExtraFieldInfo).
+            // the line to the member list (`file:line` in Details).
             Placeholder::LogFile => member_files(members),
             Placeholder::RawLine | Placeholder::LineNumber => Cell::Null,
             other => rule_cell(*other, meta, &tags).unwrap_or(Cell::Null),
@@ -982,7 +968,6 @@ mod tests {
             "message",
             "Invalid user admin from 198.51.100.23 port 40022",
         );
-        ev.end_details();
         ev.push("facility", 4i64);
         ev.push("severity", FieldValue::Null);
         ev
@@ -1027,19 +1012,12 @@ mod tests {
     #[test]
     fn default_profiles_parse_with_their_columns_in_order() {
         let profiles = profiles();
-        assert_eq!(profiles.len(), 6);
+        assert_eq!(profiles.len(), 4);
         let mut keys: Vec<&str> = profiles.keys().map(String::as_str).collect();
         keys.sort_unstable();
         assert_eq!(
             keys,
-            vec![
-                "all-field-info",
-                "all-field-info-verbose",
-                "minimal",
-                "standard",
-                "super-verbose",
-                "verbose"
-            ]
+            vec!["minimal", "standard", "super-verbose", "verbose"]
         );
         assert_eq!(
             names(&profiles["standard"]),
@@ -1047,7 +1025,6 @@ mod tests {
                 "Timestamp",
                 "RuleTitle",
                 "Level",
-                "Computer",
                 "LogSource",
                 "LogFile",
                 "LineNumber",
@@ -1056,23 +1033,24 @@ mod tests {
         );
         let verbose = &profiles["verbose"];
         assert_eq!(verbose.name, "verbose");
-        assert_eq!(verbose.columns.len(), 14);
-        assert_eq!(&names(verbose)[11..], &["RuleFile", "RuleID", "LogFile"]);
+        assert_eq!(verbose.columns.len(), 12);
+        assert_eq!(&names(verbose)[9..], &["RuleFile", "RuleID", "LogFile"]);
         assert_eq!(
             verbose.columns[0],
             ("Timestamp".to_string(), Placeholder::Timestamp)
         );
-        assert!(verbose.uses(Placeholder::ExtraFieldInfo));
+        assert!(verbose.uses(Placeholder::Details));
         assert!(!verbose.uses(Placeholder::RawLine));
         assert_eq!(
             names(&profiles["minimal"]),
             vec!["Timestamp", "RuleTitle", "Level", "Details"]
         );
-        assert!(profiles["all-field-info"].uses(Placeholder::AllFieldInfo));
-        assert!(!profiles["all-field-info"].uses(Placeholder::Details));
-        assert_eq!(profiles["super-verbose"].columns.len(), 22);
+        assert_eq!(profiles["super-verbose"].columns.len(), 20);
         assert!(profiles["super-verbose"].uses(Placeholder::RawLine));
-        assert_eq!(profiles["all-field-info-verbose"].columns.len(), 15);
+        // Linux logs have no computer column: a syslog host name stays available as %Computer%
+        for profile in profiles.values() {
+            assert!(!profile.uses(Placeholder::Computer), "{}", profile.name);
+        }
     }
 
     #[test]
@@ -1131,24 +1109,24 @@ mod tests {
                 7
             )
         );
-        assert_eq!(row.cells.len(), 14);
+        assert_eq!(row.cells.len(), 12);
         assert_eq!(
             row.cells[0],
             Cell::Text("2026-10-26 09:00:01.000 +00:00".to_string())
         );
         assert_eq!(row.cells[1], Cell::Text("Suspicious SSH Error".to_string()));
         assert_eq!(row.cells[2], Cell::Text("high".to_string()));
-        assert_eq!(row.cells[3], Cell::Text("webserver01".to_string()));
-        assert_eq!(row.cells[4], Cell::Text("linux/sshd".to_string()));
-        assert_eq!(row.cells[5], Cell::List(vec!["InitAccess".to_string()]));
-        assert_eq!(row.cells[6], Cell::List(vec!["T1190".to_string()]));
+        assert_eq!(row.cells[3], Cell::Text("linux/sshd".to_string()));
+        assert_eq!(row.cells[4], Cell::List(vec!["InitAccess".to_string()]));
+        assert_eq!(row.cells[5], Cell::List(vec!["T1190".to_string()]));
         assert_eq!(
-            row.cells[7],
+            row.cells[6],
             Cell::List(vec!["cve.2026-109618".to_string()])
         );
-        assert_eq!(row.cells[8], Cell::Number(7));
+        assert_eq!(row.cells[7], Cell::Number(7));
+        // every parsed field, the main ones first
         assert_eq!(
-            row.cells[9],
+            row.cells[8],
             Cell::Map(vec![
                 ("Proc".to_string(), JsonValue::from("sshd")),
                 ("PID".to_string(), JsonValue::from(2001)),
@@ -1156,25 +1134,20 @@ mod tests {
                     "Msg".to_string(),
                     JsonValue::from("Invalid user admin from 198.51.100.23 port 40022")
                 ),
-            ])
-        );
-        assert_eq!(
-            row.cells[10],
-            Cell::Map(vec![
                 ("facility".to_string(), JsonValue::from(4)),
                 ("severity".to_string(), JsonValue::Null),
             ])
         );
         assert_eq!(
-            row.cells[11],
+            row.cells[9],
             Cell::Text("lnx_sshd_susp_ssh.yml".to_string())
         );
         assert_eq!(
-            row.cells[12],
+            row.cells[10],
             Cell::Text("4d2a0e6c-1b5d-4c8c-9f0b-7f2a8b6c1d01".to_string())
         );
         assert_eq!(
-            row.cells[13],
+            row.cells[11],
             Cell::Text("test_files/linux/auth.log".to_string())
         );
     }
@@ -1255,15 +1228,15 @@ mod tests {
     }
 
     #[test]
-    fn all_field_info_and_timestamp_inferred() {
-        let profile = profiles().remove("all-field-info").unwrap();
+    fn details_flag_an_inferred_timestamp() {
+        let profile = verbose();
         let mut ev = sshd_event();
         ev.timestamp_inferred = true;
         let row = render_detection(&detection(ev, 3), &meta(), &profile, &opts());
         let i = profile
             .columns
             .iter()
-            .position(|(_, p)| *p == Placeholder::AllFieldInfo)
+            .position(|(_, p)| *p == Placeholder::Details)
             .unwrap();
         assert_eq!(
             row.cells[i],
@@ -1279,16 +1252,15 @@ mod tests {
                 ("TimestampInferred".to_string(), JsonValue::Bool(true)),
             ])
         );
-        // The verbose profile puts the flag into ExtraFieldInfo.
-        let mut ev = sshd_event();
-        ev.timestamp_inferred = true;
-        let row = render_detection(&detection(ev, 3), &meta(), &verbose(), &opts());
         assert_eq!(
-            cell_text(&row.cells[10]),
-            "facility: 4 ¦ severity: - ¦ TimestampInferred: true"
+            cell_text(&row.cells[i]),
+            "Proc: sshd ¦ PID: 2001 ¦ Msg: Invalid user admin from 198.51.100.23 port 40022 ¦ facility: 4 ¦ severity: - ¦ TimestampInferred: true"
         );
-        let plain = render_detection(&detection(sshd_event(), 3), &meta(), &verbose(), &opts());
-        assert_eq!(cell_text(&plain.cells[10]), "facility: 4 ¦ severity: -");
+        let plain = render_detection(&detection(sshd_event(), 3), &meta(), &profile, &opts());
+        assert_eq!(
+            cell_text(&plain.cells[i]),
+            "Proc: sshd ¦ PID: 2001 ¦ Msg: Invalid user admin from 198.51.100.23 port 40022 ¦ facility: 4 ¦ severity: -"
+        );
     }
 
     #[test]
@@ -1333,7 +1305,6 @@ mod tests {
         ev.push("sc-bytes", 0i64);
         ev.push("cs-referer", FieldValue::Null);
         ev.push("cs-user-agent", FieldValue::Null);
-        ev.end_details();
         ev.push("request_time", 0.512f64);
         ev.push("extra", true);
         let profile = profiles().remove("standard").unwrap();
@@ -1343,21 +1314,13 @@ mod tests {
             Cell::Text("2026-10-24 15:35:38.000 +00:00".to_string())
         );
         assert_eq!(
-            cell_text(&row.cells[7]),
-            "SrcIP: 162.35.99.94 ¦ Method: POST ¦ URI: /?q0000000=v&q0000001=v ¦ Status: 200 ¦ Bytes: 0 ¦ Referer: - ¦ UA: -"
+            cell_text(&row.cells[6]),
+            "SrcIP: 162.35.99.94 ¦ Method: POST ¦ URI: /?q0000000=v&q0000001=v ¦ Status: 200 ¦ Bytes: 0 ¦ Referer: - ¦ UA: - ¦ request_time: 0.512 ¦ extra: true"
         );
         let json = row_json(&profile, &row, false);
         assert!(
-            json.contains("\"Status\":200,\"Bytes\":0,\"Referer\":null,\"UA\":null"),
+            json.contains("\"Status\":200,\"Bytes\":0,\"Referer\":null,\"UA\":null,\"request_time\":0.512,\"extra\":true"),
             "{json}"
-        );
-        // The standard profile has no ExtraFieldInfo, so the float stays out of this row.
-        assert!(!json.contains("request_time"));
-        let verbose_row =
-            render_detection(&detection(sshd_event(), 1), &meta(), &verbose(), &opts());
-        assert_eq!(
-            cell_text(&verbose_row.cells[10]),
-            "facility: 4 ¦ severity: -"
         );
     }
 
@@ -1380,12 +1343,18 @@ mod tests {
     }
 
     #[test]
-    fn computer_is_null_without_a_hostname() {
+    fn computer_is_the_hostname_in_a_custom_profile_and_null_without_one() {
+        let profile = parse_profiles("custom:\n    Host: \"%Computer%\"\n")
+            .unwrap()
+            .remove("custom")
+            .unwrap();
+        let row = render_detection(&detection(sshd_event(), 1), &meta(), &profile, &opts());
+        assert_eq!(row.cells[0], Cell::Text("webserver01".to_string()));
         let mut ev = sshd_event();
         ev.hostname = None;
-        let row = render_detection(&detection(ev, 1), &meta(), &verbose(), &opts());
-        assert_eq!(row.cells[3], Cell::Null);
-        assert_eq!(row_texts(&verbose(), &row)[3], "-");
+        let row = render_detection(&detection(ev, 1), &meta(), &profile, &opts());
+        assert_eq!(row.cells[0], Cell::Null);
+        assert_eq!(row_texts(&profile, &row)[0], "-");
     }
 
     #[test]
@@ -1400,7 +1369,10 @@ mod tests {
         m.description = Some("desc\u{0}".to_string());
         m.references = vec!["ref\u{1b}".to_string()];
         m.tags.push("cve.\u{1b}2".to_string());
-        let profile = profiles().remove("super-verbose").unwrap();
+        let mut profile = profiles().remove("super-verbose").unwrap();
+        profile
+            .columns
+            .push(("Computer".to_string(), Placeholder::Computer));
         let row = render_detection(&detection(ev, 1), &m, &profile, &opts());
         let text = row_texts(&profile, &row).join(" · ");
         assert!(!text.chars().any(|c| c.is_control() && c != '\t'), "{text}");
@@ -1465,7 +1437,7 @@ mod tests {
             rule_file: "web_rapid_posts_to_php_index.yml".to_string(),
             ..RuleMeta::default()
         };
-        let profile = profiles().remove("all-field-info-verbose").unwrap();
+        let profile = verbose();
         let row = render_correlation(&hit, &refs, &m, &profile, &opts());
         assert_eq!(row.level, "medium");
         assert_eq!(
@@ -1485,7 +1457,6 @@ mod tests {
             cell("Timestamp"),
             Cell::Text("2026-10-24 15:35:44.000 +00:00".to_string())
         );
-        assert_eq!(cell("Computer"), Cell::Text("honeypot".to_string()));
         assert_eq!(cell("LogSource"), Cell::Text("correlation".to_string()));
         assert_eq!(cell("LineNumber"), Cell::Null);
         assert_eq!(
@@ -1518,23 +1489,23 @@ mod tests {
             ),
             ("GroupBy".to_string(), JsonValue::from("162.35.99.94")),
         ];
-        let expected_extra = vec![(
+        let members = (
             "Members".to_string(),
             serde_json::json!([
                 "POST Request To Web Root Or PHP Index (apache2/access.log:3)",
                 "PHP Memory Exhausted Before Script Execution (PHP2Shell Memory Pressure) (php-error.log:9)",
                 "POST Request To Web Root Or PHP Index (apache2/access.log:4)"
             ]),
-        )];
+        );
         let mut all = expected_details.clone();
-        all.extend(expected_extra.clone());
-        assert_eq!(cell("AllFieldInfo"), Cell::Map(all));
+        all.push(members.clone());
+        assert_eq!(cell("Details"), Cell::Map(all));
         assert_eq!(
-            cell_text(&cell("AllFieldInfo")),
+            cell_text(&cell("Details")),
             "Count: 3 ¦ Rules: POST Request To Web Root Or PHP Index, PHP Memory Exhausted Before Script Execution (PHP2Shell Memory Pressure) ¦ First: 2026-10-24 15:35:38.000 +00:00 ¦ Last: 2026-10-24 15:35:44.000 +00:00 ¦ GroupBy: 162.35.99.94 ¦ Members: POST Request To Web Root Or PHP Index (apache2/access.log:3), PHP Memory Exhausted Before Script Execution (PHP2Shell Memory Pressure) (php-error.log:9), POST Request To Web Root Or PHP Index (apache2/access.log:4)"
         );
 
-        // Details / ExtraFieldInfo / RawLine with the super-verbose profile, no group-by.
+        // Details / RawLine with the super-verbose profile, no group-by.
         let ungrouped = CorrelationHit {
             group_values: vec![],
             hostname: None,
@@ -1546,13 +1517,13 @@ mod tests {
             let i = profile.columns.iter().position(|(c, _)| c == name).unwrap();
             row.cells[i].clone()
         };
+        let mut ungrouped_details = expected_details[..4].to_vec();
+        ungrouped_details.push(members);
         assert_eq!(
             cell("Details"),
-            Cell::Map(expected_details[..4].to_vec()),
+            Cell::Map(ungrouped_details),
             "no GroupBy entry without group values"
         );
-        assert_eq!(cell("ExtraFieldInfo"), Cell::Map(expected_extra));
-        assert_eq!(cell("Computer"), Cell::Null);
         assert_eq!(cell("RawLine"), Cell::Null);
     }
 
@@ -1618,7 +1589,7 @@ mod tests {
                 ("MitreTags".into(), Placeholder::MitreTags),
                 ("LineNumber".into(), Placeholder::LineNumber),
                 ("RuleID".into(), Placeholder::RuleID),
-                ("Empty".into(), Placeholder::ExtraFieldInfo),
+                ("Empty".into(), Placeholder::Details),
                 ("NoTags".into(), Placeholder::OtherTags),
             ],
         };
@@ -1715,7 +1686,7 @@ mod tests {
         let text = String::from_utf8(plain.into_inner()).unwrap();
         assert_eq!(
             text,
-            "Timestamp · RuleTitle · Level · Computer · LogSource · LogFile · LineNumber · Details\n\n2026-10-26 09:00:01.000 +00:00 · Suspicious SSH Error · critical · webserver01 · linux/sshd · test_files/linux/auth.log · 1 · Proc: sshd ¦ PID: 2001 ¦ Msg: Invalid user admin from 198.51.100.23 port 40022\n\n"
+            "Timestamp · RuleTitle · Level · LogSource · LogFile · LineNumber · Details\n\n2026-10-26 09:00:01.000 +00:00 · Suspicious SSH Error · critical · linux/sshd · test_files/linux/auth.log · 1 · Proc: sshd ¦ PID: 2001 ¦ Msg: Invalid user admin from 198.51.100.23 port 40022 ¦ facility: 4 ¦ severity: -\n\n"
         );
         let mut colored = Buffer::ansi();
         render_stdout(&mut colored, &profile, &row, false, false).unwrap();
@@ -1842,26 +1813,25 @@ mod tests {
         assert_eq!(&records[0][0], "2026-10-26 09:00:01.000 +00:00");
         assert_eq!(&records[0][1], "Suspicious SSH Error");
         assert_eq!(&records[0][2], "high");
-        assert_eq!(&records[0][5], "InitAccess");
-        assert_eq!(&records[0][6], "T1190");
-        assert_eq!(&records[0][8], "1");
+        assert_eq!(&records[0][3], "linux/sshd");
+        assert_eq!(&records[0][4], "InitAccess");
+        assert_eq!(&records[0][5], "T1190");
+        assert_eq!(&records[0][7], "1");
         assert_eq!(
-            &records[0][9],
-            "Proc: sshd ¦ PID: 2001 ¦ Msg: Invalid user admin from 198.51.100.23 port 40022"
+            &records[0][8],
+            "Proc: sshd ¦ PID: 2001 ¦ Msg: Invalid user admin from 198.51.100.23 port 40022 ¦ facility: 4 ¦ severity: -"
         );
-        assert_eq!(&records[0][10], "facility: 4 ¦ severity: -");
-        assert_eq!(&records[0][13], "test_files/linux/auth.log");
+        assert_eq!(&records[0][11], "test_files/linux/auth.log");
         // The second row: no timestamp (the bare `-` placeholder is kept readable: a whole-cell `-`
         // is plain text to spreadsheets), a formula in the message gets the apostrophe, no rule id.
         assert_eq!(&records[1][0], "-");
         assert_eq!(&records[1][2], "critical");
-        assert_eq!(&records[1][3], "-");
-        assert_eq!(&records[1][8], "2");
+        assert_eq!(&records[1][7], "2");
         assert!(
-            records[1][9].starts_with("Proc: sshd"),
+            records[1][8].starts_with("Proc: sshd"),
             "the cell starts with the label, not the formula"
         );
-        assert_eq!(&records[1][12], "-");
+        assert_eq!(&records[1][10], "-");
         // A cell whose text itself starts with a formula character is neutralized.
         let mut formula_profile = verbose();
         formula_profile.columns = vec![("RawLine".to_string(), Placeholder::RawLine)];
@@ -1902,13 +1872,13 @@ mod tests {
         assert_eq!(objects[0]["RuleTitle"], "Suspicious SSH Error");
         assert_eq!(objects[0]["LineNumber"], 1);
         assert_eq!(objects[0]["Details"]["PID"], 2001);
-        assert_eq!(objects[0]["ExtraFieldInfo"]["severity"], JsonValue::Null);
+        assert_eq!(objects[0]["Details"]["severity"], JsonValue::Null);
         assert_eq!(
             objects[0]["MitreTactics"],
             serde_json::json!(["InitAccess"])
         );
         assert_eq!(objects[1]["Timestamp"], JsonValue::Null);
-        assert_eq!(objects[1]["Computer"], JsonValue::Null);
+        assert!(objects[1].get("Computer").is_none());
         assert_eq!(objects[1]["RuleID"], JsonValue::Null);
         assert_eq!(objects[1]["Details"]["Msg"], "=cmd|' /C calc'!A0");
 

@@ -392,7 +392,6 @@ pub fn continuation_event(
     ev.timestamp = last_ts;
     ev.timestamp_inferred = last_ts.is_some();
     ev.push("message", raw.trim_end());
-    ev.end_details();
     ev
 }
 
