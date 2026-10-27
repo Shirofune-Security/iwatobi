@@ -7,11 +7,9 @@
 #   %Timestamp%        event time (local time, or UTC with -U)
 #   %RuleTitle%        Sigma rule title
 #   %Level%            Sigma rule level
-#   %Computer%         hostname from the log line, or the local hostname in live analysis
+#   %Computer%         hostname from the log line, or the local hostname in live analysis (not in the default profiles)
 #   %LogSource%        the log source the event was classified as (ex: linux/sshd, webserver, apache, php/error_log)
-#   %Details%          the key fields of the event (ex: Proc, PID, Msg for syslog)
-#   %ExtraFieldInfo%   every other parsed field
-#   %AllFieldInfo%     every parsed field
+#   %Details%          every parsed field of the event, the main ones first (ex: Proc, PID, Msg for syslog)
 #   %RawLine%          the original log line
 #   %LineNumber%       line number inside the log file (- for correlations)
 #   %LogFile%          path of the log file (for correlations: the files of the member events)
@@ -40,26 +38,22 @@ standard:
     Timestamp: "%Timestamp%"
     RuleTitle: "%RuleTitle%"
     Level: "%Level%"
-    Computer: "%Computer%"
     LogSource: "%LogSource%"
     LogFile: "%LogFile%"
     LineNumber: "%LineNumber%"
     Details: "%Details%"
 
-# Default for files saved with -o: standard plus MITRE ATT&CK tags, all parsed fields,
-# and the rule and log file information.
+# Default for files saved with -o: standard plus MITRE ATT&CK tags and the rule information.
 verbose:
     Timestamp: "%Timestamp%"
     RuleTitle: "%RuleTitle%"
     Level: "%Level%"
-    Computer: "%Computer%"
     LogSource: "%LogSource%"
     MitreTactics: "%MitreTactics%"
     MitreTags: "%MitreTags%"
     OtherTags: "%OtherTags%"
     LineNumber: "%LineNumber%"
     Details: "%Details%"
-    ExtraFieldInfo: "%ExtraFieldInfo%"
     RuleFile: "%RuleFile%"
     RuleID: "%RuleID%"
     LogFile: "%LogFile%"
@@ -69,14 +63,12 @@ super-verbose:
     Timestamp: "%Timestamp%"
     RuleTitle: "%RuleTitle%"
     Level: "%Level%"
-    Computer: "%Computer%"
     LogSource: "%LogSource%"
     MitreTactics: "%MitreTactics%"
     MitreTags: "%MitreTags%"
     OtherTags: "%OtherTags%"
     LineNumber: "%LineNumber%"
     Details: "%Details%"
-    ExtraFieldInfo: "%ExtraFieldInfo%"
     RawLine: "%RawLine%"
     RuleAuthor: "%RuleAuthor%"
     RuleCreationDate: "%RuleCreationDate%"
@@ -85,37 +77,6 @@ super-verbose:
     Description: "%Description%"
     References: "%References%"
     FalsePositives: "%FalsePositives%"
-    RuleFile: "%RuleFile%"
-    RuleID: "%RuleID%"
-    LogFile: "%LogFile%"
-
-# Verbose profile with all field information instead of Details and ExtraFieldInfo.
-all-field-info:
-    Timestamp: "%Timestamp%"
-    RuleTitle: "%RuleTitle%"
-    Level: "%Level%"
-    Computer: "%Computer%"
-    LogSource: "%LogSource%"
-    LineNumber: "%LineNumber%"
-    AllFieldInfo: "%AllFieldInfo%"
-    RuleFile: "%RuleFile%"
-    RuleID: "%RuleID%"
-    LogFile: "%LogFile%"
-
-# All field information plus tags and rule metadata.
-all-field-info-verbose:
-    Timestamp: "%Timestamp%"
-    RuleTitle: "%RuleTitle%"
-    Level: "%Level%"
-    Computer: "%Computer%"
-    LogSource: "%LogSource%"
-    MitreTactics: "%MitreTactics%"
-    MitreTags: "%MitreTags%"
-    OtherTags: "%OtherTags%"
-    LineNumber: "%LineNumber%"
-    AllFieldInfo: "%AllFieldInfo%"
-    RuleAuthor: "%RuleAuthor%"
-    Status: "%Status%"
     RuleFile: "%RuleFile%"
     RuleID: "%RuleID%"
     LogFile: "%LogFile%"

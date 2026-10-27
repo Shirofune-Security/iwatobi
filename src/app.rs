@@ -310,6 +310,8 @@ pub fn run(opts: &TimelineOptions) -> i32 {
         &util::fmt_num(targets.len() + usize::from(journal.is_some())),
     );
     util::p(None, "", true);
+    p_label(no_color, "Output profile: ", &render_profile.name);
+    util::p(None, "", true);
 
     // --- scan ------------------------------------------------------------------------------------
     let scan_opts = ScanOptions {

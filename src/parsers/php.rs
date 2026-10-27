@@ -347,7 +347,6 @@ impl LineParser for PhpErrorParser {
         };
         ev.push("php_type", php_type);
         ev.push("message", message);
-        ev.end_details();
         ev.push("file", file);
         ev.push("line", line);
         ev.push("zone", zone);
@@ -415,7 +414,6 @@ impl PhpFpmParser {
         ev.push("pool", FieldValue::Null);
         ev.push("child_pid", FieldValue::Null);
         ev.push("message", msg);
-        ev.end_details();
         ev.push("zone", zone);
         tag_php_message(&mut ev, msg);
         self.ctx.finish(&mut ev);
@@ -466,7 +464,6 @@ impl LineParser for PhpFpmParser {
         ev.push("pool", pool);
         ev.push("child_pid", child_pid);
         ev.push("message", message);
-        ev.end_details();
         tag_php_message(&mut ev, message);
         self.ctx.finish(&mut ev);
         Some(ev)
@@ -705,10 +702,8 @@ mod tests {
     fn tag_php_message_adds_tag_and_fields_after_the_details() {
         let mut ev = ParsedEvent::new("raw", &LogSourceTag::APACHE_ERROR);
         ev.push("message", HONEYPOT);
-        ev.end_details();
         tag_php_message(&mut ev, HONEYPOT);
         assert!(ev.tags.contains(&LogSourceTag::PHP_ERROR_LOG));
-        assert_eq!(ev.details().len(), 1);
         assert_eq!(ev.field_str("php_type"), Some("Fatal error"));
         assert_eq!(
             ev.field_str("php_message"),
@@ -820,7 +815,6 @@ mod tests {
             keys(&ev),
             vec!["php_type", "message", "file", "line", "zone"]
         );
-        assert_eq!(ev.details().len(), 2);
         assert_eq!(ev.field_str("php_type"), Some("Fatal error"));
         assert_eq!(
             ev.field_str("message"),
@@ -987,7 +981,6 @@ mod tests {
             assert!(ev.timestamp_inferred, "{l}");
             assert!(!ev.tz_explicit);
             assert_eq!(ev.field_str("message"), Some(l));
-            assert_eq!(ev.details().len(), 1);
             assert_eq!(ev.tags, vec![LogSourceTag::PHP_ERROR_LOG]);
             assert_eq!(ev.primary_logsource, "php/error_log");
             assert_eq!(ev.field("php_type"), None);
@@ -1066,7 +1059,6 @@ mod tests {
             ev.field_str("message"),
             Some("NOTICE: fpm is running, pid 1")
         );
-        assert_eq!(ev.details().len(), 2);
         assert_eq!(
             keys(&ev),
             vec![
@@ -1227,7 +1219,6 @@ mod tests {
         assert_eq!(ev.primary_logsource, "php/fpm");
         assert_eq!(ev.tags, vec![LogSourceTag::PHP_FPM]);
         assert_eq!(keys(&ev), vec!["level", "pool", "child_pid", "message"]);
-        assert_eq!(ev.details().len(), 4);
         assert_eq!(ev.field_str("level"), Some("NOTICE"));
         assert_eq!(ev.field("pool"), Some(&FieldValue::Null));
         assert_eq!(ev.field("child_pid"), Some(&FieldValue::Null));
@@ -1314,7 +1305,6 @@ mod tests {
         assert_eq!(ev.primary_logsource, "php/fpm");
         assert_eq!(ev.field_str("pool"), Some("www"));
         assert_eq!(ev.field("child_pid"), Some(&FieldValue::Int(2012)));
-        assert_eq!(ev.details().len(), 4);
         assert_eq!(ev.field_str("php_type"), Some("Warning"));
         assert_eq!(
             ev.field_str("php_message"),
@@ -1397,7 +1387,6 @@ mod tests {
                 "line"
             ]
         );
-        assert_eq!(ev.details().len(), 4);
         assert_eq!(ev.field("level"), Some(&FieldValue::Null));
         assert_eq!(ev.field("pool"), Some(&FieldValue::Null));
         assert_eq!(ev.field("child_pid"), Some(&FieldValue::Null));

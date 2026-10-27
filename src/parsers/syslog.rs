@@ -537,7 +537,6 @@ impl SyslogParser {
         ev.push("process", header.process.clone());
         ev.push("pid", header.pid);
         ev.push("message", header.message.as_str());
-        ev.end_details();
         if let Some(pri) = header.pri {
             ev.push("facility", i64::from(pri / 8));
             ev.push("severity", i64::from(pri % 8));
@@ -593,7 +592,6 @@ impl SyslogParser {
             rest.trim()
         };
         ev.push("message", message);
-        ev.end_details();
         super::php::tag_php_message(&mut ev, message);
         self.ctx.finish(&mut ev);
         ev
@@ -1165,20 +1163,20 @@ mod tests {
             assert_eq!(ev.primary_logsource, exp.4, "line {n}: primary");
             assert_eq!(ev.raw, lines[i], "line {n}: raw");
             assert_eq!(
-                keys(ev.details()),
+                keys(&ev.fields[..3]),
                 ["process", "pid", "message"],
                 "line {n}"
             );
             // The php[14100] line carries the PHP message fields (php_type, php_message, file,
-            // line) that the PHP detector adds; every other line has no PRI and no extra fields.
+            // line) that the PHP detector adds; every other line has no PRI and no other fields.
             if ev.tags.contains(&LogSourceTag::PHP_ERROR_LOG) {
                 assert_eq!(
-                    keys(ev.extra()),
+                    keys(&ev.fields[3..]),
                     ["php_type", "php_message", "file", "line"],
                     "line {n}: PHP fields"
                 );
             } else {
-                assert!(ev.extra().is_empty(), "line {n}: no PRI, no extra fields");
+                assert_eq!(ev.fields.len(), 3, "line {n}: no PRI, no other fields");
             }
             assert_eq!(ev.tags[0], SYSLOG, "line {n}: first tag is syslog");
         }
@@ -1347,7 +1345,7 @@ mod tests {
         assert_eq!(s(&ev, "message"), "-- MARK --");
         assert_eq!(ev.primary_logsource, "linux/syslog");
         assert_eq!(ev.tags, vec![SYSLOG]);
-        assert_eq!(keys(ev.details()), ["process", "pid", "message"]);
+        assert_eq!(keys(&ev.fields[..3]), ["process", "pid", "message"]);
         let ev = one(&mut p, "Oct 26 17:39:01 host last message repeated 2 times");
         assert_eq!(ev.field("process"), Some(&FieldValue::Null));
         assert_eq!(s(&ev, "message"), "last message repeated 2 times");
@@ -1396,8 +1394,10 @@ mod tests {
         assert_eq!(ev.hostname.as_deref(), Some("host"));
         assert_eq!(s(&ev, "process"), "su");
         assert_eq!(s(&ev, "message"), "(to root) user on pts/0");
-        assert_eq!(keys(ev.details()), ["process", "pid", "message"]);
-        assert_eq!(keys(ev.extra()), ["facility", "severity"]);
+        assert_eq!(
+            keys(&ev.fields),
+            ["process", "pid", "message", "facility", "severity"]
+        );
         assert_eq!(ev.field("facility"), Some(&FieldValue::Int(4)));
         assert_eq!(ev.field("severity"), Some(&FieldValue::Int(2)));
         assert_eq!(ev.primary_logsource, "linux/auth");
@@ -1413,7 +1413,7 @@ mod tests {
         // an out-of-range PRI is ignored but the line is still an entry
         let ev = one(&mut p, "<999>Oct 26 17:39:01 host proc: m");
         assert_eq!(s(&ev, "process"), "proc");
-        assert!(ev.extra().is_empty());
+        assert_eq!(keys(&ev.fields), ["process", "pid", "message"]);
         assert!(!ev.timestamp_inferred);
     }
 
@@ -1600,8 +1600,7 @@ mod tests {
             assert!(!ev.timestamp_inferred);
             assert_eq!(ev.hostname.as_deref(), Some("kali-linux-2025-2"));
             assert_eq!(ev.timestamp.unwrap().offset().local_minus_utc(), 9 * 3600);
-            assert_eq!(keys(ev.details()), ["process", "pid", "message"]);
-            assert!(ev.extra().is_empty());
+            assert_eq!(keys(&ev.fields), ["process", "pid", "message"]);
         }
         assert_eq!(s(&events[0], "process"), "crontab");
         assert_eq!(events[0].field("pid"), Some(&FieldValue::Int(12399)));
@@ -1628,10 +1627,17 @@ mod tests {
             assert!(ev.tz_explicit);
             assert!(!ev.timestamp_inferred);
             assert_eq!(ev.hostname.as_deref(), Some("webserver01"));
-            assert_eq!(keys(ev.details()), ["process", "pid", "message"]);
             assert_eq!(
-                keys(ev.extra()),
-                ["facility", "severity", "msgid", "structured_data"]
+                keys(&ev.fields),
+                [
+                    "process",
+                    "pid",
+                    "message",
+                    "facility",
+                    "severity",
+                    "msgid",
+                    "structured_data"
+                ]
             );
             assert_eq!(ev.field("msgid"), Some(&FieldValue::Null));
             assert_eq!(ev.field("severity"), Some(&FieldValue::Int(6)));
@@ -1751,7 +1757,7 @@ mod tests {
             assert!(!ev.timestamp_inferred);
             assert_eq!(ev.timestamp.unwrap().offset().local_minus_utc(), 9 * 3600);
             assert_eq!(ev.hostname.as_deref(), Some("kali-linux-2025-2"));
-            assert!(ev.extra().is_empty());
+            assert_eq!(keys(&ev.fields), ["process", "pid", "message"]);
         }
         assert_eq!(s(&events[0], "process"), "systemd");
         assert_eq!(events[0].field("pid"), Some(&FieldValue::Int(1)));
@@ -1835,8 +1841,7 @@ mod tests {
             assert_eq!(s(ev, "process"), "vsftpd");
             assert!(!ev.tz_explicit);
             assert!(!ev.timestamp_inferred);
-            assert_eq!(keys(ev.details()), ["process", "pid", "user", "message"]);
-            assert!(ev.extra().is_empty());
+            assert_eq!(keys(&ev.fields), ["process", "pid", "user", "message"]);
         }
         // Sun Oct 26 17:39:01 2026 [pid 1234] CONNECT: Client "::ffff:203.0.113.40"
         assert_eq!(ts(&events[0]), "2026-10-26T17:39:01+09:00");
@@ -1878,7 +1883,7 @@ mod tests {
             assert_eq!(ev.field("pid"), Some(&FieldValue::Null));
             assert_eq!(ev.hostname, None, "no hint, no host");
             assert!(!ev.tz_explicit);
-            assert_eq!(keys(ev.details()), ["process", "pid", "message"]);
+            assert_eq!(keys(&ev.fields[..3]), ["process", "pid", "message"]);
         }
         assert_eq!(ts(&events[0]), "2026-10-26T17:40:00+09:00");
         assert_eq!(
@@ -2118,7 +2123,7 @@ mod tests {
         assert_eq!(ev.tags, vec![SYSLOG, AUTH]);
         assert_eq!(ev.primary_logsource, "linux/auth", "file-derived primary");
         assert_eq!(s(&ev, "message"), "sh: 1: wget: not found");
-        assert_eq!(keys(ev.details()), ["message"]);
+        assert_eq!(keys(&ev.fields[..1]), ["message"]);
         assert_eq!(ev.raw, "sh: 1: wget: not found");
         let entry = one(&mut p, "Oct 26 17:39:01 host sshd[1]: Accepted publickey");
         let ev = one(&mut p, "  thrown in /var/www/x.php on line 3");
@@ -2165,7 +2170,6 @@ mod tests {
                 "structured_data"
             ]
         );
-        assert_eq!(ev.details_len, 3);
         assert_eq!(s(&ev, "msgid"), "ID1");
         let line = "Oct 26 17:39:01 host sshd[1]: trailing space ";
         let ev = one(&mut p, line);

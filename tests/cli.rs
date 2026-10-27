@@ -120,19 +120,13 @@ fn help_lists_the_commands() {
 }
 
 #[test]
-fn list_profiles_prints_the_six_profiles() {
+fn list_profiles_prints_the_four_profiles() {
     let r = run(&["list-profiles", "-q", "-K"]);
     assert_eq!(r.code, 0, "{}", r.stderr);
-    for p in [
-        "minimal:",
-        "standard:",
-        "verbose:",
-        "super-verbose:",
-        "all-field-info:",
-        "all-field-info-verbose:",
-    ] {
+    for p in ["minimal:", "standard:", "verbose:", "super-verbose:"] {
         assert!(r.stdout.contains(p), "missing {p} in\n{}", r.stdout);
     }
+    assert!(!r.stdout.contains("all-field-info"), "{}", r.stdout);
 }
 
 #[test]
@@ -153,10 +147,10 @@ fn php2shell_php_error_log() {
     assert_eq!(first["LogSource"], "php/error_log");
     assert_eq!(first["Level"], "high");
     assert_eq!(first["Details"]["Type"], "Fatal error");
-    // PHP's own script location ("in Unknown on line 0") is an extra field, not a detail
-    assert!(first["Details"].get("PhpFile").is_none());
-    assert_eq!(first["ExtraFieldInfo"]["PhpLine"], 0);
-    assert_eq!(first["ExtraFieldInfo"]["PhpFile"], "Unknown");
+    // PHP's own script location ("in Unknown on line 0"), not the log location
+    assert_eq!(first["Details"]["PhpLine"], 0);
+    assert_eq!(first["Details"]["PhpFile"], "Unknown");
+    assert!(first.get("ExtraFieldInfo").is_none());
     assert_eq!(first["LogFile"], "test_files/php2shell/php-error.log");
     assert_eq!(first["LineNumber"], 1);
     assert!(
@@ -207,12 +201,12 @@ fn php2shell_apache_error_log() {
             .starts_with("sh: 1:"),
         "{shell}"
     );
-    assert_eq!(shell["ExtraFieldInfo"]["TimestampInferred"], true);
+    assert_eq!(shell["Details"]["TimestampInferred"], true);
     assert_eq!(shell["LogSource"], "apache");
     let crash = rows.iter().find(|r| r["RuleTitle"] == SEGFAULT).unwrap();
     assert_eq!(crash["Details"]["Module"], "core");
     assert_eq!(crash["Details"]["Level"], "notice");
-    assert_eq!(crash["ExtraFieldInfo"]["error_code"], "AH00051");
+    assert_eq!(crash["Details"]["error_code"], "AH00051");
     // the apache lines are zoneless: with -z UTC they stay on their wall time
     assert!(
         crash["Timestamp"].as_str().unwrap().ends_with("+00:00"),
@@ -335,7 +329,7 @@ fn linux_syslog_family() {
         .find(|r| r["RuleTitle"] == CRONTAB && r["LogFile"].as_str().unwrap().ends_with("syslog"))
         .unwrap();
     assert_eq!(crontab["LogSource"], "linux/cron");
-    assert_eq!(crontab["Computer"], "kali-linux-2025-2");
+    assert!(crontab.get("Computer").is_none());
     assert_eq!(crontab["Details"]["Proc"], "crontab");
     assert_eq!(crontab["Details"]["PID"], 12399);
     assert_eq!(crontab["Details"]["Msg"], "(user) REPLACE (user)");
@@ -384,7 +378,7 @@ fn web_fixtures() {
     expect(&c, CHAIN, 1);
     assert_eq!(rows.len(), 11, "{c:#?}");
     let threading = rows.iter().find(|r| r["RuleTitle"] == THREADING).unwrap();
-    assert_eq!(threading["ExtraFieldInfo"]["TimestampInferred"], true);
+    assert_eq!(threading["Details"]["TimestampInferred"], true);
     let json_hit = rows
         .iter()
         .find(|r| {
@@ -396,7 +390,7 @@ fn web_fixtures() {
     assert_eq!(json_hit["Timestamp"], "2026-10-26 03:20:00.000 +00:00");
     let sess = rows.iter().find(|r| r["RuleTitle"] == SESSION).unwrap();
     assert_eq!(sess["Details"]["Client"], "::1:50284");
-    assert_eq!(sess["ExtraFieldInfo"]["referer"], "http://example.com/");
+    assert_eq!(sess["Details"]["referer"], "http://example.com/");
 }
 
 #[test]
@@ -446,11 +440,16 @@ fn control_characters_never_reach_the_output() {
 }
 
 #[test]
-fn scanning_message_is_shown_only_when_saving_to_a_file() {
+fn output_profile_is_shown_and_the_scanning_message_only_when_saving_to_a_file() {
     const SCANNING: &str = "Scanning in progress. Please wait.";
     let (r, rows) = scan_jsonl("-f", "test_files/linux/cron", &[]);
     assert!(!rows.is_empty());
-    assert!(r.stdout.contains(SCANNING), "{}", r.stdout);
+    assert!(
+        r.stdout
+            .contains(&format!("Output profile: verbose\n\n{SCANNING}")),
+        "{}",
+        r.stdout
+    );
     // the bar itself draws only on a terminal
     assert!(!r.stdout.contains("100%"), "{}", r.stdout);
     let r = run(&[
@@ -465,6 +464,11 @@ fn scanning_message_is_shown_only_when_saving_to_a_file() {
     ]);
     assert_eq!(r.code, 0, "{}", r.stderr);
     assert!(r.stdout.contains("Modifying Crontab"), "{}", r.stdout);
+    assert!(
+        r.stdout.contains("Output profile: standard"),
+        "{}",
+        r.stdout
+    );
     assert!(!r.stdout.contains(SCANNING), "{}", r.stdout);
 }
 
@@ -484,16 +488,15 @@ fn stdout_uses_the_standard_profile_and_colors_can_be_disabled() {
     ]);
     assert_eq!(r.code, 0, "{}", r.stderr);
     assert!(
-        r.stdout.contains(
-            "Timestamp · RuleTitle · Level · Computer · LogSource · LogFile · LineNumber · Details"
-        ),
+        r.stdout
+            .contains("Timestamp · RuleTitle · Level · LogSource · LogFile · LineNumber · Details"),
         "{}",
         r.stdout
     );
     // RFC 3164 lines have no year (it is inferred from the file's modification time), so only the rest is checked
     assert!(
         r.stdout.contains(
-            "-10-26 04:05:10.000 +00:00 · Modifying Crontab · medium · rhel9-web · linux/cron · test_files/linux/cron · 3 · "
+            "-10-26 04:05:10.000 +00:00 · Modifying Crontab · medium · linux/cron · test_files/linux/cron · 3 · "
         ),
         "{}",
         r.stdout
@@ -557,7 +560,7 @@ fn csv_json_outputs_and_clobber() {
     let mut lines = csv_text.lines();
     assert_eq!(
         lines.next().unwrap(),
-        "Timestamp,RuleTitle,Level,Computer,LogSource,MitreTactics,MitreTags,OtherTags,LineNumber,Details,ExtraFieldInfo,RuleFile,RuleID,LogFile"
+        "Timestamp,RuleTitle,Level,LogSource,MitreTactics,MitreTags,OtherTags,LineNumber,Details,RuleFile,RuleID,LogFile"
     );
     let data_rows = lines.filter(|l| !l.is_empty()).count();
     assert_eq!(data_rows, 10);

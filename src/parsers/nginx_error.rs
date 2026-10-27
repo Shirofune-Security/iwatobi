@@ -154,7 +154,6 @@ impl LineParser for NginxErrorParser {
         ev.push("request", opt(pairs.request));
         ev.push("upstream", opt(pairs.upstream));
         ev.push("message", message);
-        ev.end_details();
         ev.push(
             "tid",
             group("tid").map_or(FieldValue::Null, FieldValue::int_or_null),
@@ -275,7 +274,6 @@ mod tests {
                 "c-ip"
             ]
         );
-        assert_eq!(ev.details().len(), 6);
         assert_eq!(ev.field_str("level"), Some("notice"));
         assert_eq!(ev.field("pid"), Some(&FieldValue::Int(2000)));
         assert_eq!(ev.field("tid"), Some(&FieldValue::Int(2000)));
@@ -386,7 +384,6 @@ mod tests {
         );
         assert_eq!(ev.field_str("file"), Some("Unknown"));
         assert_eq!(ev.field("line"), Some(&FieldValue::Int(0)));
-        assert_eq!(ev.details().len(), 6);
     }
 
     #[test]
@@ -488,7 +485,6 @@ mod tests {
         assert!(ev.timestamp_inferred);
         assert!(ev.tags.contains(&LogSourceTag::PHP_ERROR_LOG));
         assert_eq!(ev.field_str("php_type"), Some("Warning"));
-        assert_eq!(ev.details().len(), 1);
     }
 
     #[test]

@@ -31,7 +31,7 @@ static ENTRY_RE: LazyLock<Regex> = LazyLock::new(|| {
     .expect("access log entry regex is valid")
 });
 
-/// The taxonomy keys shown in the `Details` column, in order.
+/// The first taxonomy keys of an access log event (shown first in `Details`), in order.
 const DETAILS_KEYS: [&str; 7] = [
     "c-ip",
     "cs-method",
@@ -42,7 +42,7 @@ const DETAILS_KEYS: [&str; 7] = [
     "cs-user-agent",
 ];
 
-/// The taxonomy keys that follow in `ExtraFieldInfo`, in order.
+/// The taxonomy keys that follow them, in order.
 const EXTRA_KEYS: [&str; 6] = [
     "cs-uri-stem",
     "cs-uri",
@@ -339,7 +339,6 @@ impl Taxonomy {
         ev.push("sc-bytes", self.sc_bytes);
         ev.push("cs-referer", self.cs_referer);
         ev.push("cs-user-agent", self.cs_user_agent.clone());
-        ev.end_details();
         ev.push("cs-uri-stem", stem);
         ev.push("cs-uri", self.target);
         ev.push("cs-version", self.cs_version);
@@ -1157,10 +1156,9 @@ mod tests {
         assert_eq!(rfc3339(&ev), "2026-10-26T12:00:00+09:00");
         assert!(ev.tz_explicit);
         assert!(!ev.timestamp_inferred);
-        assert_eq!(ev.details_len, 7);
-        assert_eq!(keys(ev.details()), DETAILS_KEYS);
+        assert_eq!(keys(&ev.fields[..7]), DETAILS_KEYS);
         assert_eq!(
-            keys(ev.extra()),
+            keys(&ev.fields[7..]),
             EXTRA_KEYS,
             "a plain combined line has neither ident nor extra"
         );
@@ -1326,7 +1324,6 @@ mod tests {
             assert!(ev.field("message").is_none(), "not a continuation: {line}");
             assert!(!ev.timestamp_inferred);
             assert!(ev.tz_explicit);
-            assert_eq!(ev.details_len, 7);
             assert!(matches!(field(&ev, "sc-status"), FieldValue::Int(_)));
             assert!(matches!(field(&ev, "sc-bytes"), FieldValue::Int(_)));
             for key in DETAILS_KEYS.iter().chain(EXTRA_KEYS.iter()) {
@@ -1385,7 +1382,7 @@ mod tests {
         assert_eq!(field(&ev, "cs-user-agent"), &s("curl/8.5.0"));
         assert_eq!(field(&ev, "cs-referer"), &FieldValue::Null);
         assert_eq!(
-            keys(ev.extra()),
+            keys(&ev.fields[7..]),
             [
                 "cs-uri-stem",
                 "cs-uri",
@@ -1505,7 +1502,6 @@ mod tests {
             first.fields,
             vec![("message".to_string(), s("sh: 1: wget: not found"))]
         );
-        assert_eq!(first.details_len, 1);
         assert_eq!(first.primary_logsource, "webserver");
         assert_eq!(
             first.tags,
@@ -1761,10 +1757,9 @@ mod tests {
         assert_eq!(field(&ev, "cs-host"), &s("198.51.100.11:80"));
         assert_eq!(field(&ev, "cs-version"), &s("HTTP/1.1"));
         assert_eq!(field(&ev, "cs-username"), &FieldValue::Null);
-        assert_eq!(ev.details_len, 7);
-        assert_eq!(keys(ev.details()), DETAILS_KEYS);
+        assert_eq!(keys(&ev.fields[..7]), DETAILS_KEYS);
         // the original keys follow, in document order, with their original types
-        let extra = keys(ev.extra());
+        let extra = keys(&ev.fields[7..]);
         assert_eq!(&extra[..6], &EXTRA_KEYS);
         assert_eq!(
             &extra[6..],
@@ -1861,7 +1856,6 @@ mod tests {
             assert!(ev.timestamp.is_some());
             assert!(ev.tz_explicit);
             assert!(!ev.timestamp_inferred);
-            assert_eq!(ev.details_len, 7);
             assert_eq!(field(&ev, "sc-status"), &FieldValue::Int(200));
             assert!(matches!(field(&ev, "sc-bytes"), FieldValue::Int(_)));
             assert!(matches!(field(&ev, "c-ip"), FieldValue::Str(_)));
@@ -2094,12 +2088,12 @@ mod tests {
     #[test]
     fn json_missing_aliases_are_null_but_present() {
         let ev = parse_json(r#"{"foo":"bar","n":1}"#);
-        assert_eq!(keys(ev.details()), DETAILS_KEYS);
+        assert_eq!(keys(&ev.fields[..7]), DETAILS_KEYS);
         for key in DETAILS_KEYS.iter().chain(EXTRA_KEYS.iter()) {
             assert_eq!(field(&ev, key), &FieldValue::Null, "{key}");
         }
         assert_eq!(
-            keys(ev.extra()),
+            keys(&ev.fields[7..]),
             [
                 "cs-uri-stem",
                 "cs-uri",
@@ -2247,7 +2241,6 @@ mod tests {
         ] {
             let ev = parser.parse_line(line).expect("event");
             assert_eq!(ev.fields, vec![("message".to_string(), s(line))], "{line}");
-            assert_eq!(ev.details_len, 1);
             assert!(!matches_json_entry(line), "{line}");
         }
         // a JSON object that is not access-shaped is still an entry inside an access JSON file
@@ -2389,17 +2382,16 @@ mod tests {
         assert_eq!(field(&ev, "cs-method"), &s("POST"));
         assert_eq!(field(&ev, "method"), &s("POST"));
         assert_eq!(ev.fields.iter().filter(|(k, _)| k == "method").count(), 1);
-        assert_eq!(keys(ev.extra())[6..], ["method", "status"]);
+        assert_eq!(keys(&ev.fields[7..])[6..], ["method", "status"]);
     }
 
     #[test]
-    fn both_parsers_emit_seven_details_and_rule_logsources_match() {
+    fn both_parsers_emit_the_taxonomy_keys_first_and_rule_logsources_match() {
         let text = parse_text(&fixture(APACHE_FIXTURE)[0]);
         let json = parse_json(&fixture(NGINX_FIXTURE)[0]);
         for ev in [&text, &json] {
-            assert_eq!(ev.details().len(), 7);
-            assert_eq!(keys(ev.details()), DETAILS_KEYS);
-            assert!(ev.extra().len() >= 6);
+            assert_eq!(keys(&ev.fields[..7]), DETAILS_KEYS);
+            assert_eq!(keys(&ev.fields[7..13]), EXTRA_KEYS);
         }
         assert!(LogSourceSpec::new(None, Some("webserver"), None).matches_any(&text.tags));
         assert!(
