@@ -256,7 +256,7 @@ fn php2shell_directory_scan_fires_the_exploitation_chain() {
     expect(&c, OOM, 106);
     expect(&c, SESSION, 39);
     expect(&c, SEGFAULT, 55);
-    expect(&c, SHELL, 29);
+    expect(&c, SHELL, 32); // 29 in error.log + 3 in apache-stderr-segment.log
     expect(&c, MEM_PRESSURE, 88);
     assert!(c.get(RAPID_POST).copied().unwrap_or(0) >= 27, "{c:#?}");
     let chain = rows.iter().find(|r| r["RuleTitle"] == CHAIN).unwrap();
@@ -278,15 +278,42 @@ fn php2shell_directory_scan_fires_the_exploitation_chain() {
 }
 
 #[test]
-fn log_format_override_scans_a_file_with_no_timestamps() {
+fn a_file_with_no_timestamps_is_read_from_its_name_or_log_format() {
+    // `apache-stderr-segment.log` is named like Apache output: read as an Apache error log.
     let (_, rows) = scan_jsonl(
         "-f",
         "test_files/php2shell/apache2/apache-stderr-segment.log",
-        &["--log-format", "apache-error"],
+        &[],
     );
     let c = count_by_title(&rows);
     expect(&c, SHELL, 3);
     assert_eq!(rows[0]["Timestamp"], Value::Null);
+    // The same lines under a neutral name need --log-format.
+    let dir = tempfile::tempdir().unwrap();
+    let neutral = dir.path().join("segment.txt");
+    std::fs::copy(
+        repo().join("test_files/php2shell/apache2/apache-stderr-segment.log"),
+        &neutral,
+    )
+    .unwrap();
+    let r = run(&[
+        "dfir-timeline",
+        "-f",
+        neutral.to_str().unwrap(),
+        "-q",
+        "-K",
+        "-Q",
+        "-w",
+        "-N",
+    ]);
+    assert_eq!(r.code, 1, "{}", r.stdout);
+    assert!(r.stdout.contains("unrecognized log format"), "{}", r.stdout);
+    let (_, rows) = scan_jsonl(
+        "-f",
+        neutral.to_str().unwrap(),
+        &["--log-format", "apache-error"],
+    );
+    expect(&count_by_title(&rows), SHELL, 3);
 }
 
 #[test]
@@ -349,6 +376,9 @@ fn web_fixtures() {
     expect(&c, NGINX_CORE, 1);
     expect(&c, MEM_PRESSURE, 2); // access.log + access.json
     expect(&c, RAPID_POST, 1);
+    // error.log:4 (OOM), :6 (segfault) and :9 (session ID) fall within five minutes
+    expect(&c, CHAIN, 1);
+    assert_eq!(rows.len(), 11, "{c:#?}");
     let threading = rows.iter().find(|r| r["RuleTitle"] == THREADING).unwrap();
     assert_eq!(threading["ExtraFieldInfo"]["TimestampInferred"], true);
     let json_hit = rows
@@ -704,4 +734,169 @@ fn fixture_tree_is_present() {
     ] {
         assert!(Path::new(&repo().join(f)).is_file(), "{f} missing");
     }
+}
+
+#[cfg(unix)]
+#[test]
+fn symlink_loops_are_not_followed_and_files_are_scanned_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path().join("d");
+    std::fs::create_dir(&d).unwrap();
+    std::fs::copy(repo().join("test_files/linux/cron"), d.join("cron")).unwrap();
+    std::os::unix::fs::symlink(".", d.join("loop_a")).unwrap();
+    std::os::unix::fs::symlink(".", d.join("loop_b")).unwrap();
+    std::os::unix::fs::symlink(repo().join("test_files/web"), d.join("outside")).unwrap();
+    std::os::unix::fs::symlink(d.join("cron"), d.join("cron.link")).unwrap();
+    let (r, rows) = scan_jsonl("-d", d.to_str().unwrap(), &[]);
+    assert!(r.stdout.contains("Total log files: 1"), "{}", r.stdout);
+    assert_eq!(count_by_title(&rows).get(CRONTAB).copied(), Some(1));
+    assert_eq!(
+        rows.len(),
+        1,
+        "nothing from the linked directory outside the tree"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_closed_stdout_pipe_ends_the_run_quietly() {
+    use std::io::Read;
+    let mut child = Command::new(bin())
+        .current_dir(repo())
+        .args([
+            "dfir-timeline",
+            "-d",
+            "test_files/php2shell",
+            "-z",
+            "UTC",
+            "-q",
+            "-K",
+            "-Q",
+            "-w",
+        ])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut first = [0u8; 16];
+    child
+        .stdout
+        .as_mut()
+        .unwrap()
+        .read_exact(&mut first)
+        .unwrap();
+    drop(child.stdout.take());
+    let mut stderr = String::new();
+    child
+        .stderr
+        .as_mut()
+        .unwrap()
+        .read_to_string(&mut stderr)
+        .unwrap();
+    let status = child.wait().unwrap();
+    assert!(!stderr.contains("panicked"), "{stderr}");
+    assert_ne!(status.code(), Some(101), "{stderr}");
+}
+
+#[test]
+fn the_output_file_may_not_be_the_input_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let evidence = dir.path().join("e.csv");
+    std::fs::copy(repo().join("test_files/linux/cron"), &evidence).unwrap();
+    let before = std::fs::read(&evidence).unwrap();
+    let e = evidence.to_str().unwrap();
+    let r = run(&[
+        "dfir-timeline",
+        "-f",
+        e,
+        "-o",
+        e,
+        "-C",
+        "-q",
+        "-K",
+        "-Q",
+        "-w",
+    ]);
+    assert_eq!(r.code, 1, "{}", r.stdout);
+    assert!(
+        r.stdout.contains("The output file is the input file"),
+        "{}",
+        r.stdout
+    );
+    assert_eq!(
+        std::fs::read(&evidence).unwrap(),
+        before,
+        "the evidence must be untouched"
+    );
+}
+
+#[test]
+fn absurd_time_offsets_are_rejected_by_the_cli() {
+    for offset in ["1000000y", "584942417356y", "9223372036854775807s"] {
+        let r = run(&[
+            "dfir-timeline",
+            "-f",
+            "test_files/linux/cron",
+            "--time-offset",
+            offset,
+            "-q",
+            "-K",
+            "-Q",
+        ]);
+        assert_eq!(r.code, 2, "{offset}: {}{}", r.stdout, r.stderr);
+        assert!(!r.stderr.contains("panicked"), "{offset}: {}", r.stderr);
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn an_unreadable_single_file_is_an_error() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let f = dir.path().join("secure");
+    std::fs::copy(repo().join("test_files/linux/secure"), &f).unwrap();
+    std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o000)).unwrap();
+    if std::fs::File::open(&f).is_ok() {
+        return; // running as root: the file is readable anyway
+    }
+    let r = run(&[
+        "dfir-timeline",
+        "-f",
+        f.to_str().unwrap(),
+        "-q",
+        "-K",
+        "-Q",
+        "-w",
+        "-N",
+    ]);
+    assert_eq!(r.code, 1, "{}", r.stdout);
+    assert!(r.stdout.contains("Permission denied"), "{}", r.stdout);
+}
+
+#[test]
+fn a_truncated_gz_file_is_reported() {
+    use std::io::Write;
+    let dir = tempfile::tempdir().unwrap();
+    let mut text = String::new();
+    for i in 0..300 {
+        text.push_str(&format!(
+            "Oct 26 04:05:10 host crontab[1]: (u) REPLACE (u) {i}\n"
+        ));
+    }
+    let mut enc = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    enc.write_all(text.as_bytes()).unwrap();
+    let gz = enc.finish().unwrap();
+    std::fs::write(dir.path().join("syslog.2.gz"), &gz[..gz.len() / 2]).unwrap();
+    let r = run(&[
+        "dfir-timeline",
+        "-d",
+        dir.path().to_str().unwrap(),
+        "-q",
+        "-K",
+        "-Q",
+        "-w",
+        "-N",
+    ]);
+    assert_eq!(r.code, 0, "{}", r.stdout);
+    assert!(r.stdout.contains("read error after line"), "{}", r.stdout);
 }

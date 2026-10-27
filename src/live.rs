@@ -136,7 +136,8 @@ impl Environment {
     fn detect() -> Self {
         Self {
             is_root: effective_uid_is_root(),
-            interactive: std::io::stdin().is_terminal() && std::io::stdout().is_terminal(),
+            // dialoguer reads stdin and draws its prompts on stderr.
+            interactive: std::io::stdin().is_terminal() && std::io::stderr().is_terminal(),
             path_var: std::env::var_os("PATH").unwrap_or_default(),
         }
     }
@@ -414,6 +415,11 @@ pub fn spawn_journalctl(exe: &Path, since: Option<&str>) -> std::io::Result<Chil
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     cmd.spawn()
+}
+
+/// Whether live analysis runs with the effective uid 0 (always false off Unix).
+pub fn running_as_root() -> bool {
+    effective_uid_is_root()
 }
 
 #[cfg(unix)]

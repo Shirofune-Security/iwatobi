@@ -19,7 +19,6 @@ use crate::util::{self, error_msg, fatal_error, p, p_label, warn_msg};
 use chrono::{DateTime, Utc};
 use rayon::prelude::*;
 use std::collections::BTreeMap;
-use std::io::BufRead;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
@@ -197,12 +196,22 @@ pub fn run(opts: &TimelineOptions) -> i32 {
             no_color,
             since: time_filter.start.map(|s| format!("@{}", s.timestamp())),
         };
+        // Say it before any prompt: the answers depend on what this user can read.
+        let not_root = cfg!(target_os = "linux") && !live::running_as_root();
+        if not_root {
+            warn_msg(no_color, live::NOT_ROOT_NOTE);
+            log_warn(live::NOT_ROOT_NOTE);
+        }
         match live::discover(&needs, &rows, &live_opts, &rules_path) {
             Ok(d) => {
                 targets = d.targets;
                 journal = d.journal;
                 skipped_logsources = d.skipped;
-                for note in &d.notes {
+                for note in d
+                    .notes
+                    .iter()
+                    .filter(|n| !(not_root && n.as_str() == live::NOT_ROOT_NOTE))
+                {
                     warn_msg(no_color, note);
                     log_warn(note);
                 }
@@ -233,6 +242,32 @@ pub fn run(opts: &TimelineOptions) -> i32 {
         targets = input::enumerate(f, opts.input.log_format);
     } else if let Some(d) = &opts.input.directory {
         targets = input::enumerate(d, opts.input.log_format);
+    }
+    if let Some(out) = &opts.output.output {
+        let outputs: Vec<std::path::PathBuf> =
+            resolve_output_targets(out, &opts.output.output_types)
+                .into_iter()
+                .map(|(_, p)| absolute(&p))
+                .collect();
+        if opts.input.filepath.is_some()
+            && targets.iter().any(|t| outputs.contains(&absolute(&t.path)))
+        {
+            error_msg(
+                no_color,
+                "The output file is the input file. Please choose a different output file.",
+            );
+            return 1;
+        }
+        targets.retain(|t| {
+            let keep = !outputs.contains(&absolute(&t.path));
+            if !keep {
+                log_warn(&format!(
+                    "Not scanning the output file {}",
+                    t.path.display()
+                ));
+            }
+            keep
+        });
     }
     if targets.is_empty() && journal.is_none() {
         error_msg(no_color, "No log files to scan.");
@@ -272,7 +307,7 @@ pub fn run(opts: &TimelineOptions) -> i32 {
         "Total log files: ",
         &util::fmt_num(targets.len() + usize::from(journal.is_some())),
     );
-    println!();
+    util::p(None, "", true);
 
     // --- scan ------------------------------------------------------------------------------------
     let scan_opts = ScanOptions {
@@ -287,13 +322,21 @@ pub fn run(opts: &TimelineOptions) -> i32 {
         mixed_zone_files: 0,
     }));
     let verbose = opts.general.verbose;
+    let single_file = opts.input.filepath.is_some();
     let ruleset_ref = &ruleset;
     let profile_ref = &render_profile;
     let opts_ref = &render_opts;
-    let bar = progress_bar(targets.len(), no_color || opts.common.quiet);
+    // Rows streamed to the terminal and a redrawing bar would overwrite each other.
+    let bar = {
+        let st = state.lock().unwrap_or_else(|e| e.into_inner());
+        progress_bar(
+            targets.len(),
+            no_color || opts.common.quiet || st.writers.writes_stdout(),
+        )
+    };
     targets.par_iter().for_each(|target| {
         let result = scan_target(target, ruleset_ref, &scan_opts);
-        report_file(target, &result, verbose, no_color);
+        report_file(target, &result, verbose || single_file, no_color);
         let mut st = state.lock().unwrap_or_else(|e| e.into_inner());
         consume_result(&mut st, result, ruleset_ref, profile_ref, opts_ref);
         if let Some(b) = &bar {
@@ -312,8 +355,7 @@ pub fn run(opts: &TimelineOptions) -> i32 {
         // read of the journal shows up.
         let stderr_reader = child.stderr.take().map(|stderr| {
             std::thread::spawn(move || {
-                std::io::BufReader::new(stderr)
-                    .lines()
+                input::Lines::new(stderr)
                     .map_while(Result::ok)
                     .collect::<Vec<String>>()
             })
@@ -323,13 +365,13 @@ pub fn run(opts: &TimelineOptions) -> i32 {
             ctx.display_name = "journalctl".to_string();
             ctx.hostname_hint = scan_opts.hostname_hint.clone();
             ctx.year_hint = Utc::now().format("%Y").to_string().parse().unwrap_or(2000);
-            let reader = std::io::BufReader::new(stdout);
             let mut result = ScanResult {
                 format: Some(LogFormat::Syslog),
                 ..Default::default()
             };
+            // Lossy UTF-8 like the file reader: one odd byte must not end the journal.
             scan_lines(
-                reader.lines().map_while(Result::ok),
+                input::Lines::new(stdout).map_while(Result::ok),
                 LogFormat::Syslog,
                 ctx,
                 &target,
@@ -410,10 +452,11 @@ pub fn run(opts: &TimelineOptions) -> i32 {
     }
 
     // --- summary --------------------------------------------------------------------------------
-    println!();
+    util::p(None, "", true);
     if !opts.output.no_summary {
         summary::print_summary(&st.summary, no_color, opts.output.utc);
     }
+    let single_file_unread = opts.input.filepath.is_some() && st.summary.files_scanned == 0;
     if !st.writers.paths.is_empty() {
         p(IwatobiColor::Green.rdg(no_color), "Results saved: ", false);
         let parts: Vec<String> = st
@@ -424,7 +467,7 @@ pub fn run(opts: &TimelineOptions) -> i32 {
             .collect();
         p(None, &parts.join(" and "), true);
     }
-    0
+    i32::from(single_file_unread)
 }
 
 struct ScanState {
@@ -480,8 +523,15 @@ fn report_file(target: &ScanTarget, result: &ScanResult, verbose: bool, no_color
         let msg = format!("Skipped {}: {reason}", target.display_name);
         log_warn(&msg);
         if verbose {
-            warn_msg(no_color, &msg);
+            error_msg(no_color, &msg);
         }
+    } else if let Some(err) = &result.read_error {
+        let msg = format!(
+            "{}: {err}; only the lines before the error were scanned",
+            target.display_name
+        );
+        log_warn(&msg);
+        warn_msg(no_color, &msg);
     } else if verbose {
         let fmt = result.format.map(|f| f.name()).unwrap_or("-");
         p(
@@ -509,6 +559,22 @@ fn progress_bar(len: usize, hidden: bool) -> Option<indicatif::ProgressBar> {
     Some(bar)
 }
 
+/// An absolute path for comparisons: canonical when the file exists, otherwise the canonical
+/// parent joined with the file name.
+fn absolute(path: &Path) -> std::path::PathBuf {
+    if let Ok(p) = std::fs::canonicalize(path) {
+        return p;
+    }
+    let parent = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    match (std::fs::canonicalize(parent), path.file_name()) {
+        (Ok(dir), Some(name)) => dir.join(name),
+        _ => path.to_path_buf(),
+    }
+}
+
 fn lower(v: &[String]) -> Vec<String> {
     v.iter()
         .map(|s| s.trim().to_ascii_lowercase())
@@ -534,7 +600,9 @@ fn build_time_filter(opts: &TimelineOptions) -> Result<TimeFilter, String> {
     }
     if let Some(off) = &opts.filter.time_offset {
         let secs = offset_to_seconds(off).ok_or_else(|| format!("invalid time offset {off}"))?;
-        f.start = Some(Utc::now() - chrono::Duration::seconds(secs));
+        f.start = chrono::TimeDelta::try_seconds(secs)
+            .and_then(|d| Utc::now().checked_sub_signed(d))
+            .or(Some(DateTime::<Utc>::MIN_UTC));
     }
     if let (Some(s), Some(e)) = (f.start, f.end)
         && s > e

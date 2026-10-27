@@ -54,6 +54,8 @@ pub struct ScanResult {
     /// True when at least one event carried its own zone and at least one did not (amendment A7).
     pub mixed_zone_sources: bool,
     pub events: usize,
+    /// A read error (truncated or corrupt `.gz`, I/O error) ended the file early.
+    pub read_error: Option<String>,
 }
 
 /// Scan one file (or stream) against the rule set.
@@ -101,15 +103,20 @@ pub fn scan_target(target: &ScanTarget, ruleset: &RuleSet, opts: &ScanOptions) -
             return result;
         }
     };
-    scan_lines(
-        input::lines(reader).map_while(Result::ok),
-        format,
-        ctx,
-        target,
-        ruleset,
-        opts,
-        &mut result,
-    );
+    let mut read_error = None;
+    let mut line_no = 0usize;
+    let lines = input::lines(reader).map_while(|line| match line {
+        Ok(l) => {
+            line_no += 1;
+            Some(l)
+        }
+        Err(e) => {
+            read_error = Some(format!("read error after line {line_no}: {e}"));
+            None
+        }
+    });
+    scan_lines(lines, format, ctx, target, ruleset, opts, &mut result);
+    result.read_error = read_error;
     result
 }
 

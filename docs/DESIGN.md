@@ -379,3 +379,21 @@ A14. **Live analysis**: expand every row first and build ONE `ScanTarget` per ca
 A15. **Output**: rows stream as each file completes (like both siblings); `-s, --sort` ("Sort events before saving the file. (warning: this uses much more memory!)") buffers rendered rows and sorts by time (None last, then rule title, then file/line). JSON (`-t json`) is newline-separated pretty-printed objects like Hayabusa/Suzaku; JSONL is one compact object per line. `RawLine` is kept only when a selected profile uses it. The per-date summary counters use the date in the output timezone (local, or UTC with `-U`). Every rendered value passes a sanitizer that replaces C0/C1 control characters other than tab with `\xHH` (terminal/CSV injection), and CSV cells additionally pass `sanitize_csv_field`.
 
 A16. **CI**: `.gitattributes` with `* text=auto eol=lf` and `*.gz binary`; integration tests compare parsed CSV/JSON values and normalize path separators; the `--no-wizard` live test uses `--log-locations` pointing at a temp file whose globs resolve inside a temp dir.
+
+A17. **Post-implementation review (2026-10-27).** Three independent reviews of the integrated crate led to
+these refinements, which override the corresponding text above: `generate: true` loads the base rules as
+standalone rules too (Sigma correlation spec) and unreferenced detection documents of a correlation file are
+standalone rules; `neq` is supported (read from the YAML, since sigma-rust's `CorrelationCondition` lacks it);
+`eq`/`neq`/`lt`/`lte` use fixed buckets; null/empty group-by and value fields count as missing; aliases match
+any base-rule identifier; same-second hits keep log order (file, line); unknown correlation keys, invalid
+timespans, duplicate base names and `1 of`/`all of` patterns that match no selection fail at load; correlation
+base matches count toward "events with hits". Parsing: a hinted format wins on one matching entry line; RFC 3164
+year inference uses the file's mtime date in the `-z` zone; ISO syslog lines need a zone and a non-numeric host;
+NUL runs are dropped (binary = control bytes in ≥ 25 % of sampled lines) and a leading BOM is stripped; the PHP
+message detector only accepts a quote after `Got error '`, `said into stderr: "` or `sent in stderr: "`;
+`php-fpm*` syslog processes also get `php/fpm`; Apache `*stderr*` files are Apache error logs; whole JSON floats
+stay floats while `s-port`, `cs-bytes`, `time-taken`, `pid`, `tid` strings become integers. CLI: symlinked
+directories are not followed and files are deduplicated by canonical path; read errors (truncated `.gz`) are
+reported; the progress bar is hidden while rows stream to the terminal; a closed stdout pipe ends the run
+quietly; `--time-offset` overflow is a CLI error; an unreadable or unrecognized `-f` file exits 1; the output
+file can never be an input; error-log names are unique per run.

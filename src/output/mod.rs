@@ -335,10 +335,22 @@ fn field_json(value: &FieldValue) -> JsonValue {
 /// The ordered map of a field slice, with human labels, plus `TimestampInferred: true` when the
 /// event borrowed its timestamp from the previous entry.
 fn field_map(fields: &[(String, FieldValue)], inferred: bool) -> Vec<(String, JsonValue)> {
-    let mut out: Vec<(String, JsonValue)> = fields
-        .iter()
-        .map(|(k, v)| (field_label(k), field_json(v)))
-        .collect();
+    // A label is used only when no other field of the event already has that name (a JSON access
+    // log may carry its own `Method` or `SrcIP` key next to `cs-method` / `c-ip`), so the map
+    // never holds the same key twice.
+    let mut out: Vec<(String, JsonValue)> = Vec::with_capacity(fields.len() + 1);
+    for (k, v) in fields {
+        let label = field_label(k);
+        let collides = label != *k
+            && (fields.iter().any(|(other, _)| *other == label)
+                || out.iter().any(|(used, _)| *used == label));
+        let key = if collides {
+            sanitize_control_chars(k)
+        } else {
+            label
+        };
+        out.push((key, field_json(v)));
+    }
     if inferred {
         out.push(("TimestampInferred".to_string(), JsonValue::Bool(true)));
     }

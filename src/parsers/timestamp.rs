@@ -111,7 +111,10 @@ pub fn month_from_abbr(s: &str) -> Option<u32> {
 }
 
 /// Year for a month/day that was logged without a year (RFC 3164).
-pub fn infer_year(month: u32, day: u32, year_hint: i32, mtime: Option<DateTime<Utc>>) -> i32 {
+///
+/// `mtime_date` is the file's modification date in the zone the log was written in: a log
+/// rotated at 06:25 JST on 1 January was modified on 31 December in UTC.
+pub fn infer_year(month: u32, day: u32, year_hint: i32, mtime_date: Option<NaiveDate>) -> i32 {
     let valid = |y: i32| NaiveDate::from_ymd_opt(y, month, day).is_some();
     let mut year = year_hint;
     if !valid(year) {
@@ -120,10 +123,10 @@ pub fn infer_year(month: u32, day: u32, year_hint: i32, mtime: Option<DateTime<U
             return year_hint;
         }
     }
-    if let Some(mtime) = mtime
+    if let Some(mtime_date) = mtime_date
         && let Some(date) = NaiveDate::from_ymd_opt(year, month, day)
     {
-        let limit = mtime.date_naive() + chrono::Duration::days(1);
+        let limit = mtime_date + chrono::Duration::days(1);
         if date > limit {
             let prev = year - 1;
             if valid(prev) {
@@ -276,8 +279,17 @@ pub fn frac_to_nanos(frac: &str) -> u32 {
 }
 
 /// The year a file was last modified, for syslog year inference.
-pub fn year_of(mtime: Option<DateTime<Utc>>) -> i32 {
-    mtime.unwrap_or_else(Utc::now).year()
+pub fn year_of(mtime: Option<DateTime<Utc>>, tz: &TzAssumption) -> i32 {
+    local_date(mtime.unwrap_or_else(Utc::now), tz).year()
+}
+
+/// The calendar date of an instant in the assumed zone.
+pub fn local_date(t: DateTime<Utc>, tz: &TzAssumption) -> NaiveDate {
+    match tz {
+        TzAssumption::Local => t.with_timezone(&chrono::Local).date_naive(),
+        TzAssumption::Fixed(off) => t.with_timezone(off).date_naive(),
+        TzAssumption::Named(z) => t.with_timezone(z).date_naive(),
+    }
 }
 
 #[cfg(test)]
@@ -344,17 +356,21 @@ mod tests {
     fn year_inference() {
         let mtime = Utc.with_ymd_and_hms(2027, 1, 3, 0, 0, 0).unwrap();
         assert_eq!(
-            infer_year(12, 30, 2027, Some(mtime)),
+            infer_year(12, 30, 2027, Some(mtime.date_naive())),
             2026,
             "Dec line in a file modified in Jan"
         );
-        assert_eq!(infer_year(1, 2, 2027, Some(mtime)), 2027);
+        assert_eq!(infer_year(1, 2, 2027, Some(mtime.date_naive())), 2027);
         assert_eq!(
             infer_year(
                 2,
                 29,
                 2029,
-                Some(Utc.with_ymd_and_hms(2029, 1, 5, 0, 0, 0).unwrap())
+                Some(
+                    Utc.with_ymd_and_hms(2029, 1, 5, 0, 0, 0)
+                        .unwrap()
+                        .date_naive()
+                )
             ),
             2028,
             "Feb 29 only valid in 2028"

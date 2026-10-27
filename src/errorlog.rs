@@ -17,6 +17,9 @@ use std::sync::{Mutex, OnceLock};
 const LOG_DIR: &str = "logs";
 
 static QUIET: AtomicBool = AtomicBool::new(false);
+/// Set when the log file could not be created, so the failure is reported once and later
+/// messages go straight to stderr instead of retrying (and repeating the failure) every time.
+static UNAVAILABLE: AtomicBool = AtomicBool::new(false);
 
 struct ErrorLog {
     path: PathBuf,
@@ -66,6 +69,10 @@ fn write_entry(level: &str, msg: &str) {
         return;
     }
     let line = format!("[{level}] {msg}");
+    if UNAVAILABLE.load(Ordering::Relaxed) {
+        eprintln!("{line}");
+        return;
+    }
     let Ok(mut guard) = state().lock() else {
         eprintln!("{line}");
         return;
@@ -74,6 +81,7 @@ fn write_entry(level: &str, msg: &str) {
         match create_log(Path::new(LOG_DIR), &command_line()) {
             Ok(log) => *guard = Some(log),
             Err(e) => {
+                UNAVAILABLE.store(true, Ordering::Relaxed);
                 eprintln!("Cannot write to the error log in ./{LOG_DIR}: {e}");
                 eprintln!("{line}");
                 return;
@@ -97,9 +105,28 @@ fn command_line() -> String {
 
 fn create_log(dir: &Path, command_line: &str) -> std::io::Result<ErrorLog> {
     fs::create_dir_all(dir)?;
-    let name = format!("errorlog-{}.log", Local::now().format("%Y%m%d_%H%M%S"));
-    let path = dir.join(name);
-    let file = File::create(&path)?;
+    // `create_new` so two runs started in the same second never share (and truncate) one file.
+    let stamp = Local::now().format("%Y%m%d_%H%M%S").to_string();
+    let mut attempt = 0u32;
+    let (path, file) = loop {
+        let name = if attempt == 0 {
+            format!("errorlog-{stamp}.log")
+        } else {
+            format!("errorlog-{stamp}-{attempt}.log")
+        };
+        let path = dir.join(name);
+        match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+        {
+            Ok(file) => break (path, file),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && attempt < 1000 => {
+                attempt += 1;
+            }
+            Err(e) => return Err(e),
+        }
+    };
     let mut writer = BufWriter::new(file);
     writeln!(writer, "{command_line}")?;
     writer.flush()?;

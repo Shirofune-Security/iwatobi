@@ -34,11 +34,12 @@ static RFC3164_RE: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 /// rsyslog high-precision / RFC 3339 and `journalctl -o short-iso[-precise]` (offset without a
-/// colon). The zone is optional so that custom ISO templates without one still parse (the time is
-/// then resolved in the assumed zone).
+/// colon). The zone is required (design §4.1): without it dpkg, MySQL and PostgreSQL logs, which
+/// also start with an ISO date, would be read as syslog with words such as `install` as the
+/// host. A host that is only digits (MySQL's thread id) is not a host either.
 static ISO_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"^(?:<(?P<pri>\d{1,3})>)?(?P<ts>\d{4}-\d\d-\d\d[T ]\d\d:\d\d:\d\d(?:\.\d{1,9})?(?:Z|[+-]\d\d:?\d\d)?) (?P<host>\S+) (?P<rest>.*)$",
+        r"^(?:<(?P<pri>\d{1,3})>)?(?P<ts>\d{4}-\d\d-\d\d[T ]\d\d:\d\d:\d\d(?:\.\d{1,9})?(?:Z|[+-]\d\d:?\d\d)) (?P<host>\S*[^\d\s]\S*) (?P<rest>.*)$",
     )
     .expect("ISO syslog regex")
 });
@@ -134,7 +135,12 @@ pub fn service_tags_for_process(process: &str) -> Vec<LogSourceTag> {
     } else if GUACAMOLE_RE.is_match(name) {
         vec![LogSourceTag::LINUX_GUACAMOLE]
     } else if PHP_RE.is_match(name) {
-        vec![LogSourceTag::PHP_ERROR_LOG]
+        if name.to_ascii_lowercase().starts_with("php-fpm") {
+            // php-fpm logging to syslog / journald: its own messages are php-fpm log lines.
+            vec![LogSourceTag::PHP_FPM, LogSourceTag::PHP_ERROR_LOG]
+        } else {
+            vec![LogSourceTag::PHP_ERROR_LOG]
+        }
     } else {
         Vec::new()
     }
@@ -294,6 +300,9 @@ fn classify(line: &str) -> Option<Shape<'_>> {
         // `Oct 26 17:39:01 sshd[1]: msg`: a log written without a hostname.
         host = None;
         rest = &line[host_m.start()..];
+    } else if host_m.as_str() == ":" {
+        // sudoers `logfile=`: `Oct 26 17:46:00 : user : TTY=pts/0 ; ...` has no host.
+        host = None;
     }
     Some(Shape::Rfc3164 {
         pri: parse_pri(c.name("pri")),
@@ -416,7 +425,14 @@ impl SyslogParser {
     /// Timestamp of an RFC 3164 line: the year is written, or inferred from the file (A7).
     fn rfc3164_time(&mut self, clock: &Clock, year: Option<i32>) -> Option<DateTime<FixedOffset>> {
         let year = year.unwrap_or_else(|| {
-            timestamp::infer_year(clock.month, clock.day, self.ctx.year_hint, self.ctx.mtime)
+            timestamp::infer_year(
+                clock.month,
+                clock.day,
+                self.ctx.year_hint,
+                self.ctx
+                    .mtime
+                    .map(|t| timestamp::local_date(t, &self.ctx.tz)),
+            )
         });
         let naive = clock.naive(year)?;
         Some(self.resolve(naive))
@@ -798,17 +814,16 @@ mod tests {
         for name in ["guacd", "guacamole", "guacamole-server"] {
             assert_eq!(service_tags_for_process(name), vec![GUACAMOLE], "{name}");
         }
-        for name in [
-            "php",
-            "php-fpm",
-            "php-fpm8.3",
-            "php8.3",
-            "php83",
-            "php-cgi",
-            "php-cgi7.4",
-            "PHP-FPM",
-        ] {
+        for name in ["php", "php8.3", "php83", "php-cgi", "php-cgi7.4"] {
             assert_eq!(service_tags_for_process(name), vec![PHP], "{name}");
+        }
+        // php-fpm logging through syslog writes php-fpm log lines
+        for name in ["php-fpm", "php-fpm8.3", "PHP-FPM"] {
+            assert_eq!(
+                service_tags_for_process(name),
+                vec![LogSourceTag::PHP_FPM, PHP],
+                "{name}"
+            );
         }
         assert!(service_tags_for_process("phpmyadmin").is_empty());
     }
@@ -1766,18 +1781,33 @@ mod tests {
     }
 
     #[test]
-    fn iso_without_a_zone_is_resolved_in_the_assumed_zone() {
+    fn iso_lines_need_a_zone_and_a_real_host() {
+        // Without a zone an ISO-dated line is not syslog: dpkg, MySQL and PostgreSQL logs look
+        // the same and would otherwise get words such as `install` as their host.
+        for line in [
+            "2026-10-26T17:39:01 host proc[1]: m",
+            "2026-10-26 17:39:02 install netcat-traditional:amd64 <none> 1.10-48",
+            "2026-10-26 17:39:01.123 JST [1234] LOG: database system is ready",
+            "2026-10-26T08:44:06.123456Z 0 [System] [MY-010116] [Server] starting",
+        ] {
+            assert!(!matches_entry(line), "{line}");
+        }
         let mut p = syslog_parser("/var/log/syslog");
-        let ev = one(&mut p, "2026-10-26T17:39:01 host proc[1]: m");
-        assert_eq!(ts(&ev), "2026-10-26T17:39:01+09:00");
-        assert!(!ev.tz_explicit);
-        let ev = one(&mut p, "2026-10-26 17:39:01.250 host proc[1]: m");
-        assert_eq!(ts(&ev), "2026-10-26T17:39:01.250+09:00");
-        assert!(!ev.tz_explicit);
-        assert_eq!(s(&ev, "process"), "proc");
         let ev = one(&mut p, "2026-10-26T08:39:01Z host proc[1]: m");
         assert_eq!(ts(&ev), "2026-10-26T08:39:01+00:00");
         assert!(ev.tz_explicit);
+        assert_eq!(s(&ev, "process"), "proc");
+    }
+
+    #[test]
+    fn sudoers_logfile_lines_have_no_host() {
+        let mut p = syslog_parser("/var/log/sudo.log");
+        let ev = one(
+            &mut p,
+            "Oct 26 17:46:00 : user : TTY=pts/0 ; PWD=/home/user ; USER=root ; COMMAND=/bin/bash",
+        );
+        assert_eq!(ev.hostname, None);
+        assert!(s(&ev, "message").starts_with("user : TTY=pts/0"));
     }
 
     // ----------------------------------------------------------------------------------------
@@ -2215,8 +2245,8 @@ mod tests {
             &mut p,
             "Oct 26 17:39:01 host php-fpm8.3[1]: PHP Warning:  x",
         );
-        assert_eq!(ev.tags, vec![SYSLOG, PHP]);
-        assert_eq!(ev.primary_logsource, "php/error_log");
+        assert_eq!(ev.tags, vec![SYSLOG, LogSourceTag::PHP_FPM, PHP]);
+        assert_eq!(ev.primary_logsource, "php/fpm");
     }
 
     #[test]

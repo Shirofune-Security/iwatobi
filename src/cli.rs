@@ -34,7 +34,7 @@ pub fn offset_to_seconds(s: &str) -> Option<i64> {
     let split = s.find(|c: char| !c.is_ascii_digit())?;
     let (num, unit) = s.split_at(split);
     let n: i64 = num.parse().ok()?;
-    let mult = match unit {
+    let mult: i64 = match unit {
         "y" => 365 * 24 * 3600,
         "M" => 30 * 24 * 3600,
         "w" => 7 * 24 * 3600,
@@ -44,7 +44,12 @@ pub fn offset_to_seconds(s: &str) -> Option<i64> {
         "s" => 1,
         _ => return None,
     };
-    Some(n * mult)
+    // Reject offsets that overflow or reach before the representable time range, instead of
+    // wrapping around or panicking when the start time is computed.
+    let secs = n.checked_mul(mult)?;
+    chrono::TimeDelta::try_seconds(secs)
+        .and_then(|d| chrono::Utc::now().checked_sub_signed(d))
+        .map(|_| secs)
 }
 
 fn parse_tz(s: &str) -> Result<TzAssumption, String> {
@@ -194,7 +199,7 @@ pub struct FilterOption {
 
 #[derive(Args, Clone, Debug, Default)]
 pub struct OutputOption {
-    /// Save the results to a file (ex: timeline.csv). With several -t types the extension is set per type
+    /// Save the results to a file. The extension is set to the output type (ex: -o timeline -t csv,jsonl writes timeline.csv and timeline.jsonl)
     #[arg(help_heading = Some("Output"), short, long, value_name = "FILE", display_order = 300)]
     pub output: Option<PathBuf>,
 

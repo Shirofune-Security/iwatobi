@@ -60,7 +60,7 @@ fn list_profiles(no_color: bool) -> i32 {
                 p(Green.rdg(no_color), &format!("{name}:"), true);
                 let cols: Vec<&str> = profile.columns.iter().map(|(c, _)| c.as_str()).collect();
                 p(None, &format!("    {}", cols.join(", ")), true);
-                println!();
+                p(None, "", true);
             }
             0
         }
@@ -112,7 +112,7 @@ fn display_logo(quiet: bool, no_color: bool, time: bool, help: bool) {
     if !quiet {
         let logo = util::asset("art/logo.txt", LOGO);
         p(Green.rdg(no_color), &logo, true);
-        println!();
+        p(None, "", true);
     }
     if time {
         let msg = Local::now().format("%Y/%m/%d %H:%M").to_string();
@@ -125,5 +125,5 @@ fn display_logo(quiet: bool, no_color: bool, time: bool, help: bool) {
         p(Green.rdg(no_color), "Version: ", false);
         p(None, &format!("{VERSION} ({RELEASE_NAME})"), true);
     }
-    println!();
+    p(None, "", true);
 }

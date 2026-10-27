@@ -33,12 +33,14 @@ const PHP_TYPES: &str = "Fatal error|Warning|Notice|Deprecated|Parse error|Stric
                          Compile Warning|User Error|User Warning|User Notice|User Deprecated|\
                          Stack trace";
 
-/// Amendment A3. The optional prefix (`...PHP message: ` or `..."`/`...'`) is lazy (`??`) so that
+/// Amendment A3. The optional prefix (`...PHP message: `, or the quote that opens the message after
+/// proxy_fcgi's `Got error '` / php-fpm's `said into stderr: "` / nginx's `sent in stderr: "`)
+/// is lazy (`??`) so that
 /// a text starting with `PHP <type>:` is taken as it is and never skipped in favour of a quoted PHP
 /// message further right. One or two spaces follow the colon (`PHP Stack trace:` may end the text).
 static PHP_MESSAGE_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(&format!(
-        r#"^(?P<prefix>.*?(?:PHP message: |["']))??PHP (?P<type>{PHP_TYPES}):(?:\s{{1,2}}|$)(?P<text>.*)$"#
+        r#"^(?P<prefix>.*?(?:PHP message: |Got error '|said into stderr: "|sent in stderr: "))??PHP (?P<type>{PHP_TYPES}):(?:\s{{1,2}}|$)(?P<text>.*)$"#
     ))
     .expect("static regex")
 });
@@ -129,7 +131,20 @@ fn wrapping_quote(prefix: &str) -> Option<char> {
 /// `file` and `line` from a trailing ` in <file> on line <n>` or ` in <file>:<n>`, after removing
 /// one trailing single or double quote (proxy_fcgi wraps the PHP message in quotes).
 pub fn split_location(text: &str) -> (Option<String>, Option<i64>) {
-    let t = text.strip_suffix(['"', '\'']).unwrap_or(text);
+    // Wrappers end the message with a quote; proxy_fcgi joins several messages with a literal
+    // `\n`, nginx with `; `.
+    let mut t = text.trim_end();
+    loop {
+        let next = t
+            .strip_suffix(['"', '\''])
+            .or_else(|| t.strip_suffix("\\n"))
+            .or_else(|| t.strip_suffix(';'))
+            .map(str::trim_end);
+        match next {
+            Some(n) if n.len() < t.len() => t = n,
+            _ => break,
+        }
+    }
     match PHP_LOCATION_RE.captures(t) {
         Some(c) => (
             c.name("file").map(|m| m.as_str().to_string()),
@@ -1472,5 +1487,41 @@ mod tests {
         assert_eq!(rfc(&events[0]), "2026-10-26T11:00:00+09:00");
         assert_eq!(events[4].field("child_pid"), Some(&FieldValue::Int(2010)));
         assert_eq!(events[7].field("child_pid"), Some(&FieldValue::Int(2012)));
+    }
+
+    #[test]
+    fn quoted_php_text_counts_only_after_the_known_wrappers() {
+        // An attacker-controlled request path or header quoting PHP text is not a PHP message.
+        assert!(detect_php_message(
+            "AH00126: Invalid URI in request GET /'PHP Fatal error:  Allowed memory size of 1 bytes exhausted in Unknown on line 0 HTTP/1.1"
+        )
+        .is_none());
+        assert!(detect_php_message(
+            "client sent invalid header line: \"X-A: \"PHP Warning:  PHP Request Startup: Session ID is too long or contains illegal characters\""
+        )
+        .is_none());
+        for wrapped in [
+            "AH01071: Got error 'PHP Fatal error:  x in Unknown on line 0'",
+            "child 2 said into stderr: \"PHP Warning:  y in /a.php on line 3\"",
+            "FastCGI sent in stderr: \"PHP Notice:  z in /b.php on line 4\" while reading",
+        ] {
+            assert!(detect_php_message(wrapped).is_some(), "{wrapped}");
+        }
+    }
+
+    #[test]
+    fn location_is_found_before_joined_messages_and_wrappers() {
+        assert_eq!(
+            split_location(r"Undefined variable $a in /var/www/a.php on line 3\n"),
+            (Some("/var/www/a.php".to_string()), Some(3))
+        );
+        assert_eq!(
+            split_location("a in /x.php on line 1;"),
+            (Some("/x.php".to_string()), Some(1))
+        );
+        assert_eq!(
+            split_location("x in Unknown on line 0'"),
+            (Some("Unknown".to_string()), Some(0))
+        );
     }
 }

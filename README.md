@@ -115,7 +115,8 @@ Filtering:
       --time-offset <OFFSET>  Scan recent events based on an offset (ex: 1y, 3M, 30d, 24h, 30m)
 
 Output:
-  -o, --output <FILE>       Save the results to a file; with several -t types the extension is set per type
+  -o, --output <FILE>       Save the results to a file. The extension is set to the output type
+                            (ex: -o timeline -t csv,jsonl writes timeline.csv and timeline.jsonl)
   -t, --output-type <FORMAT,...>  csv (default), json, jsonl
   -C, --clobber             Overwrite files when saving
   -p, --profile <PROFILE>   Output profile (default: standard on the terminal, verbose for files)
@@ -143,7 +144,8 @@ live analysis as root (or as a member of `adm` / `systemd-journal`) to read ever
 
 Syslog (RFC 3164), Apache error log, nginx error log and php-fpm lines carry no timezone. Iwatobi
 reads them in the zone given with `-z` (default: the local zone of the machine running Iwatobi).
-PHP error logs, access logs and ISO syslog lines carry their own zone and are used as written.
+Access logs, ISO syslog lines and PHP error log lines with a zone token (`[24-Oct-2026 15:35:33 UTC]`)
+carry their own zone and are used as written; PHP lines without one are read with `-z` too.
 Output is local time by default, UTC with `-U`. RFC 3164 lines also lack a year: the year of the
 file's modification time is assumed, minus one for lines that would otherwise be in the future.
 

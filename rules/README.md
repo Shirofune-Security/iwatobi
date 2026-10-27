@@ -37,8 +37,18 @@ they are; field-based selections (`field: value`) are not changed.
 
 Sigma correlation rules (`event_count`, `value_count`, `temporal`, `temporal_ordered`) are
 supported. Put the correlation and its base rules in one file separated by `---`; the
-`rules:` list may reference base rules by `name`, `id` or `title`. Base rules of a correlation
-file are only reported through the correlation (unless `generate: true`).
+`rules:` list (and `aliases:`) may reference base rules by `name`, `id` or `title`.
+
+- Base rules are only reported through the correlation, unless the correlation has
+  `generate: true`, in which case they also report their own matches. A detection document
+  of the file that no correlation references is an ordinary rule.
+- Windows slide over the events (a chain that crosses a minute boundary is still found).
+  Conditions that a sliding window cannot answer (`eq`, `neq`, `lt`, `lte`) are evaluated on
+  fixed, epoch-aligned buckets of `timespan`.
+- `group-by` and `value_count` fields that are missing or empty (`-` in an access log) do not
+  form a group or a value; such events are counted as skipped in the summary.
+- Unknown keys in `correlation:` or `condition:`, an invalid `timespan`, duplicate base rule
+  names and `rules:` entries that resolve to nothing fail the whole file (see the error log).
 
 ## Writing rules
 

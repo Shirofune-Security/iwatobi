@@ -184,27 +184,23 @@ pub fn path_hints(path: &Path) -> PathHints {
 
     if hints.format.is_none() {
         hints.format = if base.contains("access") {
-            Some(
-                if file.ends_with(".json")
-                    || file.ends_with(".jsonl")
-                    || file.ends_with(".json.gz")
-                    || file.ends_with(".jsonl.gz")
-                {
-                    LogFormat::AccessJson
-                } else {
-                    LogFormat::Access
-                },
-            )
+            Some(if has_json_extension(&file) {
+                LogFormat::AccessJson
+            } else {
+                LogFormat::Access
+            })
         } else if base.contains("fpm") {
             Some(LogFormat::PhpFpm)
         } else if base.contains("error") && hints.product == Some("nginx") {
             Some(LogFormat::NginxError)
-        } else if base.contains("error") && hints.product == Some("apache") {
+        } else if (base.contains("error") || base.contains("stderr"))
+            && hints.product == Some("apache")
+        {
+            // Apache copies its children's stderr into the error log; a separate capture of
+            // that stream (`apache-stderr.log`) has the same untimestamped lines.
             Some(LogFormat::ApacheError)
         } else if base.contains("php") {
             Some(LogFormat::PhpError)
-        } else if base.contains("error") && base.contains("stderr") {
-            None
         } else if is_syslog_name(&base) {
             Some(LogFormat::Syslog)
         } else {
@@ -212,6 +208,18 @@ pub fn path_hints(path: &Path) -> PathHints {
         };
     }
     hints
+}
+
+/// `access.json`, `access.jsonl.3.gz`, `access.json-20261026`: a JSON file under its rotation suffixes.
+fn has_json_extension(file: &str) -> bool {
+    let mut name = file.strip_suffix(".gz").unwrap_or(file);
+    if let Some(idx) = name.rfind(['.', '-']) {
+        let suffix = &name[idx + 1..];
+        if !suffix.is_empty() && suffix.chars().all(|c| c.is_ascii_digit()) {
+            name = &name[..idx];
+        }
+    }
+    name.ends_with(".json") || name.ends_with(".jsonl")
 }
 
 /// `auth.log.2.gz` → `auth`, `syslog-20261026` → `syslog`, `error_log.1` → `error_log`.
@@ -274,7 +282,7 @@ impl ParseContext {
             path: path.to_path_buf(),
             display_name: path.display().to_string(),
             tz,
-            year_hint: timestamp::year_of(mtime),
+            year_hint: timestamp::year_of(mtime, &tz),
             mtime,
             hints: path_hints(path),
             hostname_hint: None,
@@ -344,11 +352,8 @@ pub fn sniff_format(sample: &[String], hints: &PathHints) -> Option<LogFormat> {
     let count = |f: LogFormat| candidates.iter().filter(|l| f.matches_entry(l)).count();
 
     if let Some(hinted) = hints.format {
-        let n = count(hinted);
-        if n >= 1 && n * 10 >= total {
-            return Some(hinted);
-        }
-        if n >= 1 && total < 10 {
+        // An Apache error log under attack can be mostly shell stderr and download noise.
+        if count(hinted) >= 1 {
             return Some(hinted);
         }
     }
@@ -431,8 +436,13 @@ mod tests {
         assert_eq!(h.format, Some(LogFormat::Access));
         assert_eq!(h.product, Some("apache"));
         let h = path_hints(Path::new("apache-stderr-segment.log"));
-        assert_eq!(h.format, None);
+        assert_eq!(h.format, Some(LogFormat::ApacheError));
         assert_eq!(h.product, Some("apache"));
+        let h = path_hints(Path::new("/srv/app/worker-stderr.log"));
+        assert_eq!(
+            h.format, None,
+            "stderr captures of other programs stay unhinted"
+        );
     }
 
     #[test]
@@ -475,5 +485,38 @@ mod tests {
         };
         assert_eq!(sniff_format(&sample, &hints), Some(LogFormat::ApacheError));
         assert_eq!(sniff_format(&sample, &PathHints::default()), None);
+    }
+
+    #[test]
+    fn rotated_json_access_logs_keep_the_json_hint() {
+        for name in [
+            "/var/log/nginx/access.json",
+            "/var/log/nginx/access.json.1",
+            "/var/log/nginx/access.jsonl.3.gz",
+            "/var/log/nginx/access.json-20261026",
+        ] {
+            assert_eq!(
+                path_hints(Path::new(name)).format,
+                Some(LogFormat::AccessJson),
+                "{name}"
+            );
+        }
+        assert_eq!(
+            path_hints(Path::new("/var/log/nginx/access.log.1")).format,
+            Some(LogFormat::Access)
+        );
+    }
+
+    #[test]
+    fn one_entry_line_is_enough_for_a_hinted_format() {
+        let mut sample =
+            vec!["[Sat Oct 24 15:35:30.000000 2026] [core:notice] [pid 1] AH00163: up".to_string()];
+        for _ in 0..30 {
+            sample.push(
+                "Connecting to 162.35.99.94:8080... failed: Connection timed out.".to_string(),
+            );
+        }
+        let hints = path_hints(Path::new("/var/log/apache2/error.log"));
+        assert_eq!(sniff_format(&sample, &hints), Some(LogFormat::ApacheError));
     }
 }

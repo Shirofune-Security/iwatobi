@@ -67,7 +67,9 @@ pub fn enumerate(path: &Path, forced_format: Option<LogFormat>) -> Vec<ScanTarge
         out.push(t);
         return out;
     }
-    walk(path, &mut out);
+    let mut seen_dirs = std::collections::HashSet::new();
+    let mut seen_files = std::collections::HashSet::new();
+    walk(path, &mut out, &mut seen_dirs, &mut seen_files);
     out.sort_by(|a, b| a.path.cmp(&b.path));
     for t in &mut out {
         t.format = forced_format;
@@ -75,16 +77,47 @@ pub fn enumerate(path: &Path, forced_format: Option<LogFormat>) -> Vec<ScanTarge
     out
 }
 
-fn walk(dir: &Path, out: &mut Vec<ScanTarget>) {
+/// Recursive directory walk. Symlinked directories are not followed (a link loop would never
+/// end, and a link could pull files from outside the evidence tree into the timeline); a
+/// symlinked file is scanned once, however many names it has.
+fn walk(
+    dir: &Path,
+    out: &mut Vec<ScanTarget>,
+    seen_dirs: &mut std::collections::HashSet<PathBuf>,
+    seen_files: &mut std::collections::HashSet<PathBuf>,
+) {
+    let canonical = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+    if !seen_dirs.insert(canonical) {
+        return;
+    }
     let Ok(entries) = std::fs::read_dir(dir) else {
         crate::errorlog::log_warn(&format!("Could not read directory {}", dir.display()));
         return;
     };
     for entry in entries.flatten() {
         let p = entry.path();
-        if p.is_dir() {
-            walk(&p, out);
-        } else if p.is_file() {
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if file_type.is_symlink() {
+            if p.is_dir() {
+                crate::errorlog::log_warn(&format!(
+                    "Not following the symbolic link to a directory: {}",
+                    p.display()
+                ));
+                continue;
+            }
+            if !p.is_file() {
+                continue;
+            }
+        } else if file_type.is_dir() {
+            walk(&p, out, seen_dirs, seen_files);
+            continue;
+        } else if !file_type.is_file() {
+            continue;
+        }
+        let canonical = std::fs::canonicalize(&p).unwrap_or_else(|_| p.clone());
+        if seen_files.insert(canonical) {
             out.push(ScanTarget::new(&p));
         }
     }
@@ -144,23 +177,27 @@ pub fn read_sample(path: &Path, max: usize) -> std::io::Result<(Vec<String>, boo
     let mut reader = open_reader(path)?;
     let mut sample = Vec::new();
     let mut buf = Vec::new();
-    let mut binary = false;
+    let mut control_lines = 0usize;
+    let mut first = true;
     while sample.len() < max {
         buf.clear();
         let n = reader.read_until(b'\n', &mut buf)?;
         if n == 0 {
             break;
         }
-        if buf.contains(&0u8) {
-            binary = true;
-            break;
-        }
-        let line = String::from_utf8_lossy(&buf);
-        let line = line.trim_end_matches(['\n', '\r']);
+        let line = decode_line(&buf, first);
+        first = false;
         if !line.trim().is_empty() {
-            sample.push(line.to_string());
+            if line.chars().any(|c| c.is_control() && c != '\t') {
+                control_lines += 1;
+            }
+            sample.push(line);
         }
     }
+    // NUL runs alone do not make a file binary: ext4 zero-fills the tail of a log that was being
+    // written when the machine crashed, and that log is exactly the one to keep. Other control
+    // bytes in many lines do.
+    let binary = !sample.is_empty() && control_lines * 4 >= sample.len();
     Ok((sample, binary))
 }
 
@@ -168,6 +205,7 @@ pub fn read_sample(path: &Path, max: usize) -> std::io::Result<(Vec<String>, boo
 pub struct Lines<R: Read> {
     reader: BufReader<R>,
     buf: Vec<u8>,
+    first: bool,
 }
 
 impl<R: Read> Lines<R> {
@@ -175,6 +213,7 @@ impl<R: Read> Lines<R> {
         Self {
             reader: BufReader::with_capacity(1 << 16, reader),
             buf: Vec::new(),
+            first: true,
         }
     }
 }
@@ -187,12 +226,31 @@ impl<R: Read> Iterator for Lines<R> {
         match self.reader.read_until(b'\n', &mut self.buf) {
             Ok(0) => None,
             Ok(_) => {
-                let line = String::from_utf8_lossy(&self.buf);
-                Some(Ok(line.trim_end_matches(['\n', '\r']).to_string()))
+                let line = decode_line(&self.buf, self.first);
+                self.first = false;
+                Some(Ok(line))
             }
             Err(e) => Some(Err(e)),
         }
     }
+}
+
+/// One raw line as text: NUL bytes dropped (zero-filled blocks), lossy UTF-8, the newline / CR
+/// removed and, on the first line of a file, a UTF-8 byte order mark.
+fn decode_line(buf: &[u8], first: bool) -> String {
+    let text = if buf.contains(&0) {
+        let clean: Vec<u8> = buf.iter().copied().filter(|b| *b != 0).collect();
+        String::from_utf8_lossy(&clean).into_owned()
+    } else {
+        String::from_utf8_lossy(buf).into_owned()
+    };
+    let text = text.trim_end_matches(['\n', '\r']);
+    let text = if first {
+        text.strip_prefix('\u{feff}').unwrap_or(text)
+    } else {
+        text
+    };
+    text.to_string()
 }
 
 /// Lossy line iterator over a boxed reader.
@@ -239,9 +297,24 @@ mod tests {
     fn binary_files_are_flagged() {
         let dir = tempfile::tempdir().unwrap();
         let bin = dir.path().join("wtmp.bin");
-        std::fs::write(&bin, b"abc\0def\n").unwrap();
+        std::fs::write(&bin, b"\x07\x01\x02abc\x03\n\x04\x05def\n").unwrap();
         let (_, binary) = read_sample(&bin, 10).unwrap();
         assert!(binary);
+        // NUL runs alone (a zero-filled block after a crash) are dropped, not fatal; a BOM goes.
+        let zero_filled = dir.path().join("syslog");
+        let mut bytes = b"\xEF\xBB\xBFOct 26 17:39:01 host sshd[1]: before\n".to_vec();
+        bytes.extend(std::iter::repeat_n(0u8, 3000));
+        bytes.extend(b"Oct 26 17:45:00 host sshd[999]: Corrupted MAC on input.\n");
+        std::fs::write(&zero_filled, &bytes).unwrap();
+        let (sample, binary) = read_sample(&zero_filled, 10).unwrap();
+        assert!(!binary);
+        assert_eq!(
+            sample,
+            vec![
+                "Oct 26 17:39:01 host sshd[1]: before".to_string(),
+                "Oct 26 17:45:00 host sshd[999]: Corrupted MAC on input.".to_string()
+            ]
+        );
         assert_eq!(
             quick_skip_reason(&dir.path().join("wtmp")),
             Some(SkipReason::NotALogFile)

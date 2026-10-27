@@ -263,6 +263,23 @@ fn unescape_quoted(s: &str) -> Cow<'_, str> {
                     out.push('\\');
                     chars.next();
                 }
+                // nginx escapes `"` and `\` as `\x22` / `\x5C` (other `\xHH` stay as written).
+                Some('x') | Some('X') => {
+                    let mut look = chars.clone();
+                    look.next();
+                    let hex: String = look.by_ref().take(2).collect();
+                    match hex.to_ascii_uppercase().as_str() {
+                        "22" => {
+                            out.push('"');
+                            chars = look;
+                        }
+                        "5C" => {
+                            out.push('\\');
+                            chars = look;
+                        }
+                        _ => out.push('\\'),
+                    }
+                }
                 _ => out.push('\\'),
             }
         } else {
@@ -456,6 +473,10 @@ fn coerce_str(looked: Looked<'_>) -> FieldValue {
 
 /// An integer taxonomy value (`sc-status`, `sc-bytes`): numbers and numeric-looking strings
 /// become `Int`, everything else `Null`. Never a string (amendment A2).
+/// Numeric fields of the Sigma web server taxonomy (and process ids) besides `sc-status` and
+/// `sc-bytes`, which the taxonomy mapping already types.
+const NUMERIC_KEYS: &[&str] = &["s-port", "cs-bytes", "time-taken", "pid", "tid"];
+
 fn coerce_int(v: &FieldValue) -> FieldValue {
     match v {
         FieldValue::Int(i) => FieldValue::Int(*i),
@@ -922,6 +943,15 @@ impl LineParser for AccessJsonParser {
         for (key, value) in fields {
             // The taxonomy owns these names; a record that already uses them was mapped above.
             if !is_taxonomy_key(&key) {
+                // The other numeric taxonomy fields of A2 are numbers even when the log format
+                // quotes them (nginx `escape=json`), so `s-port: 443` matches.
+                let value = match &value {
+                    FieldValue::Str(s) if NUMERIC_KEYS.contains(&key.as_str()) => s
+                        .trim()
+                        .parse::<i64>()
+                        .map_or(value.clone(), FieldValue::Int),
+                    _ => value,
+                };
                 ev.push(&key, value);
             }
         }
@@ -2383,5 +2413,15 @@ mod tests {
         assert!(LogSourceSpec::new(Some("nginx"), None, Some("access")).matches_any(&json.tags));
         assert!(!LogSourceSpec::new(Some("apache"), None, Some("access")).matches_any(&json.tags));
         assert!(!LogSourceSpec::new(None, None, Some("apache")).matches_any(&text.tags));
+    }
+
+    #[test]
+    fn nginx_hex_escapes_are_decoded() {
+        assert_eq!(
+            unescape_quoted(r"GET /x\x22y HTTP/1.1"),
+            "GET /x\"y HTTP/1.1"
+        );
+        assert_eq!(unescape_quoted(r"a\x5Cb"), "a\\b");
+        assert_eq!(unescape_quoted(r"keep \x41 as is"), r"keep \x41 as is");
     }
 }
