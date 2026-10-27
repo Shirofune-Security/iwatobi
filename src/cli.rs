@@ -6,9 +6,9 @@ use chrono::DateTime;
 use clap::{ArgAction, ArgGroup, Args, Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
-pub const RELEASE_NAME: &str = "Rockhopper Release";
+pub const RELEASE_NAME: &str = "Vulnpocalypse Release";
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const FULL_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " (Rockhopper Release)");
+pub const FULL_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " (Vulnpocalypse Release)");
 const AUTHOR: &str =
     "Yamato Security (https://github.com/Yamato-Security/iwatobi - @SecurityYamato)";
 
